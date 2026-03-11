@@ -465,6 +465,27 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    // Notification action buttons
+    if (customId.startsWith('notification_modify_')) {
+        await handleNotificationModify(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('notification_pause_')) {
+        await handleNotificationPause(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('notification_resume_')) {
+        await handleNotificationResume(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('notification_delete_')) {
+        await handleNotificationDelete(interaction, sharedState);
+        return;
+    }
+
     // Default
     await interaction.reply({
         content: messages.info.processing,
@@ -999,10 +1020,40 @@ async function handleModalSubmit(interaction, sharedState) {
             await interaction.editReply({ content: `✅ Event created!\nID: **${event.id}**\nNotifications: 24h before, 1h before, at start` });
             logger.success(`Created event ${event.id}`);
         }
+        // Modify existing notification
+        else if (customId.startsWith('notification_modify_modal_')) {
+            const notificationId = customId.replace('notification_modify_modal_', '');
+            const newMessage = interaction.fields.getTextInputValue('message');
+
+            const notification = notificationManager.getNotification(notificationId);
+            if (!notification) {
+                await interaction.reply({ content: '❌ Notification not found.', ephemeral: true });
+                return;
+            }
+
+            // Update notification
+            await notificationManager.updateNotification(notificationId, { message: newMessage });
+
+            // Update board embed
+            const updatedNotification = notificationManager.getNotification(notificationId);
+            await boardManager.updateEmbed(updatedNotification);
+
+            await interaction.reply({
+                content: `✅ Notification **${notificationId}** updated!`,
+                ephemeral: true
+            });
+
+            logger.success(`Modified notification ${notificationId}`);
+        }
 
     } catch (error) {
         logger.error('Error handling modal submit:', error);
-        await interaction.editReply({ content: messages.errors.generic });
+
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content: messages.errors.generic, ephemeral: true });
+        } else {
+            await interaction.reply({ content: messages.errors.generic, ephemeral: true });
+        }
     }
 }
 
@@ -1036,6 +1087,136 @@ function parseTime(input) {
     }
 
     return null;
+}
+
+// Handle notification modify button
+async function handleNotificationModify(interaction, sharedState) {
+    const { logger, notificationManager } = sharedState;
+
+    // Extract notification ID from customId
+    const notificationId = interaction.customId.replace('notification_modify_', '');
+    const notification = notificationManager.getNotification(notificationId);
+
+    if (!notification) {
+        await interaction.reply({
+            content: '❌ Notification not found.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Build modal with current values
+    const modal = new ModalBuilder()
+        .setCustomId(`notification_modify_modal_${notificationId}`)
+        .setTitle('Modify Notification');
+
+    // Message input
+    const messageInput = new TextInputBuilder()
+        .setCustomId('message')
+        .setLabel('Message')
+        .setStyle(TextInputStyle.Paragraph)
+        .setValue(notification.message || '')
+        .setRequired(true)
+        .setMaxLength(500);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(messageInput)
+    );
+
+    await interaction.showModal(modal);
+    logger.info(`Modify modal shown for notification ${notificationId}`);
+}
+
+// Handle notification pause button
+async function handleNotificationPause(interaction, sharedState) {
+    const { logger, notificationManager, boardManager } = sharedState;
+
+    // Extract notification ID from customId
+    const notificationId = interaction.customId.replace('notification_pause_', '');
+    const notification = notificationManager.getNotification(notificationId);
+
+    if (!notification) {
+        await interaction.reply({
+            content: '❌ Notification not found.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Pause notification
+    await notificationManager.updateNotification(notificationId, { status: 'paused' });
+
+    // Update board embed
+    const updatedNotification = notificationManager.getNotification(notificationId);
+    await boardManager.updateEmbed(updatedNotification);
+
+    await interaction.reply({
+        content: `⏸️ Notification **${notificationId}** paused.`,
+        ephemeral: true
+    });
+
+    logger.success(`Paused notification ${notificationId}`);
+}
+
+// Handle notification resume button
+async function handleNotificationResume(interaction, sharedState) {
+    const { logger, notificationManager, boardManager } = sharedState;
+
+    // Extract notification ID from customId
+    const notificationId = interaction.customId.replace('notification_resume_', '');
+    const notification = notificationManager.getNotification(notificationId);
+
+    if (!notification) {
+        await interaction.reply({
+            content: '❌ Notification not found.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Resume notification
+    await notificationManager.updateNotification(notificationId, { status: 'active' });
+
+    // Update board embed
+    const updatedNotification = notificationManager.getNotification(notificationId);
+    await boardManager.updateEmbed(updatedNotification);
+
+    await interaction.reply({
+        content: `▶️ Notification **${notificationId}** resumed.`,
+        ephemeral: true
+    });
+
+    logger.success(`Resumed notification ${notificationId}`);
+}
+
+// Handle notification delete button
+async function handleNotificationDelete(interaction, sharedState) {
+    const { logger, notificationManager, boardManager } = sharedState;
+
+    // Extract notification ID from customId
+    const notificationId = interaction.customId.replace('notification_delete_', '');
+    const notification = notificationManager.getNotification(notificationId);
+
+    if (!notification) {
+        await interaction.reply({
+            content: '❌ Notification not found.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Delete from board
+    await boardManager.deleteEmbed(notification);
+
+    // Delete notification
+    await notificationManager.deleteNotification(notificationId);
+
+    await interaction.reply({
+        content: `🗑️ Notification **${notificationId}** deleted.`,
+        ephemeral: true
+    });
+
+    logger.success(`Deleted notification ${notificationId}`);
 }
 
 module.exports = {

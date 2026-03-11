@@ -86,7 +86,8 @@ class BoardManager {
 
         try {
             const embed = this.buildEmbed(notification);
-            const message = await this.boardChannel.send({ embeds: [embed] });
+            const components = this.buildActionButtons(notification);
+            const message = await this.boardChannel.send({ embeds: [embed], components });
 
             // Update notification with message ID
             await this.notificationManager.updateBoardMessageId(notification.id, message.id);
@@ -114,7 +115,8 @@ class BoardManager {
         try {
             const message = await this.boardChannel.messages.fetch(notification.boardMessageId);
             const embed = this.buildEmbed(notification);
-            await message.edit({ embeds: [embed] });
+            const components = this.buildActionButtons(notification);
+            await message.edit({ embeds: [embed], components });
 
             return true;
         } catch (error) {
@@ -344,6 +346,50 @@ class BoardManager {
             );
 
         return { embeds: [embed], components: [row] };
+    }
+
+    // Build action buttons for notification embed
+    buildActionButtons(notification) {
+        const row = new ActionRowBuilder();
+
+        // Modify button
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`notification_modify_${notification.id}`)
+                .setLabel('Modify')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('✏️')
+        );
+
+        // Pause/Resume button
+        if (notification.status === 'active') {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`notification_pause_${notification.id}`)
+                    .setLabel('Pause')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('⏸️')
+            );
+        } else if (notification.status === 'paused') {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`notification_resume_${notification.id}`)
+                    .setLabel('Resume')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('▶️')
+            );
+        }
+
+        // Delete button
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`notification_delete_${notification.id}`)
+                .setLabel('Delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️')
+        );
+
+        return [row];
     }
 }
 
