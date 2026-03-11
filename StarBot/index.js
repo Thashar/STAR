@@ -1,7 +1,8 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 const config = require('./config/config');
 const { createBotLogger } = require('../utils/consoleLogger');
 const { handleInteraction } = require('./handlers/interactionHandlers');
+const commands = require('./commands');
 
 // Services
 const NotificationManager = require('./services/notificationManager');
@@ -42,11 +43,36 @@ const sharedState = {
     scheduler
 };
 
+// Register slash commands
+async function registerCommands() {
+    try {
+        logger.info('Registering slash commands...');
+
+        const rest = new REST().setToken(config.token);
+        const data = await rest.put(
+            Routes.applicationGuildCommands(config.clientId, config.guildId),
+            { body: commands }
+        );
+
+        logger.success(`Successfully registered ${data.length} slash commands`);
+    } catch (error) {
+        logger.error('Failed to register commands:', error);
+        throw error;
+    }
+}
+
 // Event: Bot ready
 client.once('ready', async () => {
     logger.success(`✅ StarBot ready - logged in as ${client.user.tag}`);
     logger.info(`Servers: ${client.guilds.cache.size}`);
     logger.info(`Users: ${client.users.cache.size}`);
+
+    // Register commands
+    try {
+        await registerCommands();
+    } catch (error) {
+        logger.error('Command registration failed - bot will continue without commands');
+    }
 
     // Initialize services
     try {

@@ -4,42 +4,42 @@ const { createBotLogger } = require('./utils/consoleLogger');
 
 const logger = createBotLogger('MAIN');
 
-// Wczytaj konfigurację botów
+// Load bot configuration
 const botConfig = require('./bot-config.json');
 
-// Sprawdź czy używamy trybu development (npm run local)
+// Check if using development mode (npm run local)
 const isDevelopment = process.argv.includes('local');
 const environment = isDevelopment ? 'development' : 'production';
 
-logger.info(`Uruchamianie botów w trybie: ${environment}`);
+logger.info(`Starting bots in ${environment} mode`);
 
-// Pobierz listę botów do uruchomienia
+// Get list of bots to start
 const botsToStart = botConfig[environment] || [];
 
 if (botsToStart.length === 0) {
-    logger.warn(`Brak botów do uruchomienia w środowisku: ${environment}`);
+    logger.warn(`No bots to start in environment: ${environment}`);
     process.exit(0);
 }
 
-logger.info(`Uruchamianie ${botsToStart.length} bot(ów): ${botsToStart.join(', ')}`);
+logger.info(`Starting ${botsToStart.length} bot(s): ${botsToStart.join(', ')}`);
 
 const botProcesses = [];
 
-// Funkcja do konwersji nazwy bota na nazwę folderu
+// Function to convert bot name to folder name
 function getBotFolderName(botName) {
-    // Konwertuj nazwy: starbot -> StarBot
+    // Convert names: starbot -> StarBot
     const folderMap = {
         'starbot': 'StarBot'
     };
     return folderMap[botName.toLowerCase()] || botName;
 }
 
-// Uruchom każdego bota w osobnym procesie
+// Start each bot in separate process
 botsToStart.forEach(botName => {
     const folderName = getBotFolderName(botName);
     const botPath = path.join(__dirname, folderName, 'index.js');
 
-    logger.info(`Uruchamianie ${folderName}...`);
+    logger.info(`Starting ${folderName}...`);
 
     const botProcess = spawn('node', [botPath], {
         stdio: 'inherit',
@@ -47,14 +47,14 @@ botsToStart.forEach(botName => {
     });
 
     botProcess.on('error', (error) => {
-        logger.error(`Błąd uruchamiania ${folderName}:`, error);
+        logger.error(`Error starting ${folderName}:`, error);
     });
 
     botProcess.on('exit', (code, signal) => {
         if (code !== null) {
-            logger.warn(`${folderName} zakończył się z kodem: ${code}`);
+            logger.warn(`${folderName} exited with code: ${code}`);
         } else if (signal !== null) {
-            logger.warn(`${folderName} został zabity sygnałem: ${signal}`);
+            logger.warn(`${folderName} killed with signal: ${signal}`);
         }
     });
 
@@ -63,15 +63,15 @@ botsToStart.forEach(botName => {
 
 // Graceful shutdown
 function shutdown() {
-    logger.info('Zatrzymywanie wszystkich botów...');
+    logger.info('Stopping all bots...');
 
     botProcesses.forEach(({ name, process }) => {
-        logger.info(`Zatrzymywanie ${name}...`);
+        logger.info(`Stopping ${name}...`);
         process.kill('SIGTERM');
     });
 
     setTimeout(() => {
-        logger.info('Wszystkie boty zatrzymane');
+        logger.info('All bots stopped');
         process.exit(0);
     }, 2000);
 }
@@ -79,4 +79,4 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-logger.success(`✅ Launcher gotowy - zarządza ${botsToStart.length} botem/botami`);
+logger.success(`✅ Launcher ready - managing ${botsToStart.length} bot(s)`);

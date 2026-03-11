@@ -1,227 +1,217 @@
-# CLAUDE.md - Dokumentacja Projektu STAR
+# STAR - Discord Bots System
 
-**INSTRUKCJA WAŻNA: ZAWSZE PISZ PO POLSKU. Odpowiadaj na każdą konwersację w języku polskim, niezależnie od języka zapytania użytkownika.**
+**IMPORTANT: ALWAYS RESPOND IN ENGLISH.** This project is entirely in English - code, comments, documentation, and bot messages.
 
-**INSTRUKCJA COMMITOWANIA ZMIAN:**
-- Po zakończeniu wprowadzania zmian w kodzie ZAWSZE commituj i pushuj BEZ PYTANIA
-- W commitach używaj krótkiego opisu zmian PO POLSKU
-- Format commit message: Krótki opis zmian po polsku (bez dodatkowych linii)
-- Przykład: "Dodano system rankingów do StarBot"
-- NIGDY nie pytaj użytkownika czy zacommitować - po prostu to zrób
+**COMMIT INSTRUCTIONS:**
+- After making changes, ALWAYS commit and push WITHOUT ASKING
+- Use short commit messages in English
+- Format: Short description of changes
+- Example: "Added notification system to StarBot"
+- NEVER ask the user whether to commit - just do it
 
-**⚠️ INSTRUKCJA AKTUALIZACJI DOKUMENTACJI:**
-- Po każdej zmianie w funkcjonalności bota ZAWSZE aktualizuj odpowiedni plik CLAUDE.md
-- Główny CLAUDE.md - dla zmian w infrastrukturze projektu
-- StarBot/CLAUDE.md - dla zmian w funkcjonalności StarBot
-- Używaj Grep + Read z offset/limit + Edit - NIE czytaj całego pliku
-- NIE twórz "Historii Zmian" - aktualizuj bezpośrednio opisy funkcjonalności
-
-**Ostatnia aktualizacja:** Marzec 2026
+**Last Updated:** March 2026
 
 ---
 
-## 📋 Przegląd Projektu
+## 📋 Project Overview
 
-Projekt STAR to system botów Discord zbudowany na podobnej architekturze co Polski Squad. System został zaprojektowany z myślą o skalowalności i łatwości dodawania nowych botów.
+STAR is a modular Discord bot system with centralized logging and easy bot management.
 
-### Lista Botów
+### Current Bots
 
-1. **StarBot** - Główny bot projektu STAR
+1. **StarBot** ⭐ - Comprehensive notifications management system
 
 ---
 
-## 🏗️ Architektura Systemu
+## 🏗️ Architecture
 
-### Struktura Projektu
+### Project Structure
 
 ```
 STAR/
 ├── utils/
-│   └── consoleLogger.js       # Centralny system logowania
-├── logs/                       # Logi (dzienna rotacja, auto-usuwanie po 30 dniach)
-├── StarBot/                    # Pierwszy bot
+│   └── consoleLogger.js       # Centralized logging system
+├── logs/                       # Logs (daily rotation, auto-delete after 30 days)
+├── StarBot/                    # First bot
 │   ├── config/
-│   │   ├── config.js          # Konfiguracja bota
-│   │   └── messages.js        # Wiadomości i komunikaty
+│   │   ├── config.js          # Bot configuration
+│   │   └── messages.js        # Messages (English)
 │   ├── handlers/
-│   │   └── interactionHandlers.js  # Obsługa interakcji (slash commands, buttony)
-│   ├── data/                  # Dane persistentne (JSON)
-│   ├── temp/                  # Pliki tymczasowe
-│   └── index.js               # Główny plik bota
-├── index.js                   # Launcher orchestrujący wszystkie boty
-├── package.json               # Zależności projektu
-├── bot-config.json            # Konfiguracja środowisk (production/development)
-├── .env                       # Zmienne środowiskowe (NIE commitować!)
-├── .env.example               # Przykładowe zmienne środowiskowe
-├── .gitignore                 # Ignorowane pliki
-├── CLAUDE.md                  # Ten plik - dokumentacja projektu
-└── README.md                  # Podstawowe info o projekcie
-```
-
-### Wzorzec Architektury Botów
-
-Każdy bot w projekcie STAR stosuje jednolitą strukturę:
-
-```javascript
-// BotName/index.js - Główny plik bota
-const { Client, GatewayIntentBits } = require('discord.js');
-const config = require('./config/config');
-const { createBotLogger } = require('../utils/consoleLogger');
-
-const logger = createBotLogger('BotName');
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-// Globalny stan współdzielony
-const sharedState = {
-    client,
-    config,
-    logger
-};
-
-client.once('ready', async () => {
-    logger.success('✅ BotName gotowy - [kluczowe funkcje]');
-});
-
-client.on('interactionCreate', async interaction => {
-    await handleInteraction(interaction, sharedState);
-});
-
-client.login(config.token);
+│   │   └── interactionHandlers.js  # Interaction handling
+│   ├── services/
+│   │   ├── notificationManager.js  # Notification CRUD
+│   │   ├── boardManager.js         # Board embeds management
+│   │   └── scheduler.js            # Notification triggering
+│   ├── data/                  # Persistent data (JSON)
+│   ├── commands.js            # Slash command definitions
+│   ├── deploy-commands.js     # Command deployment script
+│   └── index.js               # Main bot file
+├── index.js                   # Launcher orchestrating all bots
+├── package.json               # Project dependencies
+├── bot-config.json            # Environment configuration (production/development)
+├── .env                       # Environment variables (DO NOT COMMIT!)
+├── .env.example               # Example environment variables
+├── .gitignore                 # Ignored files
+├── CLAUDE.md                  # This file - project documentation
+├── update.js                  # Auto-update script (git pull)
+└── README.md                  # Basic project info
 ```
 
 ---
 
-## 🔧 System Logowania
+## 🚀 Quick Start
 
-**Plik:** `utils/consoleLogger.js`
-
-### Zasady Użycia
-
-**ZAWSZE używaj centralnego systemu logowania. NIGDY nie używaj `console.log()` bezpośrednio.**
-
-```javascript
-// Na górze każdego pliku który potrzebuje logowania
-const { createBotLogger } = require('../utils/consoleLogger');
-const logger = createBotLogger('BotName');
-
-// Następnie używaj metod loggera
-logger.info('Wiadomość informacyjna');
-logger.error('Wiadomość błędu');
-logger.warn('Ostrzeżenie');
-logger.success('Sukces');
-```
-
-### Funkcje Systemu Logowania
-
-- 🎨 **Kolorowe wyjście** - Każdy bot ma własny kolor (StarBot: żółty ⭐)
-- 📝 **Wiele miejsc docelowych**:
-  - Konsola z kolorowaniem
-  - Plik `logs/bots-YYYY-MM-DD.log` (dzienna rotacja, auto-usuwanie po 30 dniach)
-  - Discord webhook (opcjonalne, rate-limited)
-- 🔍 **Inteligentne separatory** - Wizualne separatory przy przełączaniu między botami
-
----
-
-## 🚀 Uruchamianie Botów
-
-### Komendy NPM
+### 1. Installation
 
 ```bash
-# Produkcja - wszystkie boty z bot-config.json["production"]
+npm install
+```
+
+### 2. Configuration
+
+Copy `.env.example` to `.env` and fill in:
+```env
+STARBOT_TOKEN=bot_token_here
+STARBOT_CLIENT_ID=client_id
+STARBOT_GUILD_ID=guild_id
+STARBOT_NOTIFICATIONS_BOARD_CHANNEL=channel_id
+```
+
+### 3. Run
+
+```bash
+# Production - all bots from bot-config.json["production"]
 npm start
 npm run dev
 
-# Development - boty z bot-config.json["development"]
+# Development - bots from bot-config.json["development"]
 npm run local
 
-# Pojedynczy bot
+# Single bot
 npm run starbot
-```
 
-### Konfiguracja Środowisk
-
-**Plik:** `bot-config.json`
-
-```json
-{
-  "production": ["starbot"],
-  "development": ["starbot"]
-}
+# Update from GitHub
+npm run update
 ```
 
 ---
 
-## 🔐 Zmienne Środowiskowe
+## 🔧 Centralized Logging System
 
-**Plik:** `.env` (NIE commitować! Wzór w `.env.example`)
+**File:** `utils/consoleLogger.js`
+
+### Usage Rules
+
+**ALWAYS use centralized logging. NEVER use `console.log()` directly.**
+
+```javascript
+// At the top of each file that needs logging
+const { createBotLogger } = require('../utils/consoleLogger');
+const logger = createBotLogger('BotName');
+
+// Then use logger methods
+logger.info('Information message');
+logger.error('Error message');
+logger.warn('Warning');
+logger.success('Success');
+```
+
+### Features
+
+- 🎨 **Colored output** - Each bot has its own color (StarBot: yellow ⭐)
+- 📝 **Multiple destinations**:
+  - Console with coloring
+  - File `logs/bots-YYYY-MM-DD.log` (daily rotation, auto-delete after 30 days)
+  - Discord webhook (optional, rate-limited)
+- 🔍 **Smart separators** - Visual separators when switching between bots
+
+---
+
+## 📚 Bot Documentation
+
+**StarBot:** [StarBot/CLAUDE.md](StarBot/CLAUDE.md) - Comprehensive notifications management system with one-time/recurring reminders, event notifications, live notifications board with Discord timestamps, and auto-updating embeds
+
+---
+
+## 🔄 Adding New Bot
+
+1. Copy StarBot/ structure to NewBot/
+2. Update config/config.js with new environment variables
+3. Add variables to .env and .env.example
+4. Add bot to bot-config.json
+5. Add color and emoji to utils/consoleLogger.js (botColors and botEmojis sections)
+6. Add script to package.json
+7. Create NewBot/CLAUDE.md with documentation
+
+---
+
+## 📦 Auto-Update System
+
+**File:** `update.js` - Standalone script for updating repository from GitHub
+
+### Usage
+
+```bash
+npm run update
+# or
+node update.js
+```
+
+### What it does
+
+1. Executes `git pull origin main`
+2. Shows changes
+3. Only updates tracked files (won't touch .env, data/, node_modules, logs/)
+
+---
+
+## 🔐 Environment Variables
 
 ```env
 # ===== STARBOT =====
 STARBOT_TOKEN=bot_token_here
 STARBOT_CLIENT_ID=client_id
 STARBOT_GUILD_ID=guild_id
+STARBOT_NOTIFICATIONS_BOARD_CHANNEL=channel_id
 
-# ===== DISCORD WEBHOOK (OPCJONALNE) =====
+# ===== DISCORD WEBHOOK (OPTIONAL) =====
 DISCORD_LOG_WEBHOOK_URL=webhook_url_here
 ```
 
 ---
 
-## 📚 Najlepsze Praktyki
+## 💡 Best Practices
 
-1. **Logowanie** - `utils/consoleLogger.js` - createBotLogger('BotName'), NIGDY console.log
-   - Dostępne metody: `logger.info()`, `logger.error()`, `logger.warn()`, `logger.success()`
+1. **Logging** - `utils/consoleLogger.js` - createBotLogger('BotName'), NEVER console.log
+   - Available methods: `logger.info()`, `logger.error()`, `logger.warn()`, `logger.success()`
 
-2. **Błędy** - try/catch z logger.error, ephemeral feedback do użytkownika
+2. **Errors** - try/catch with logger.error, ephemeral feedback to user
 
-3. **Konfiguracja** - Wrażliwe w `.env`, walidacja przy starcie, `config/config.js`
+3. **Configuration** - Sensitive data in `.env`, validation at startup, `config/config.js`
 
-4. **Persistencja** - `fs.promises`, `JSON.stringify(data, null, 2)` dla czytelności
+4. **Persistence** - `fs.promises`, `JSON.stringify(data, null, 2)` for readability
 
 5. **Graceful Shutdown** - SIGINT/SIGTERM handler, client.destroy()
 
 ---
 
-## 🐛 Rozwiązywanie Problemów
+## 🐛 Troubleshooting
 
-**Start:** Sprawdź `logs/bots-YYYY-MM-DD.log`, zmienne środowiskowe, uprawnienia Discord
+**Start:** Check `logs/bots-YYYY-MM-DD.log`, environment variables, Discord permissions
 
-**Logi:** Wszystkie logi w jednym pliku z timestampami i nazwami botów
+**Logs:** All logs in one file with timestamps and bot names
 
-**Błędy:** Pełny stack trace w logach, ephemeral wiadomości dla użytkowników
-
----
-
-## 📖 Szczegółowa Dokumentacja Botów
-
-**StarBot:** [StarBot/CLAUDE.md](StarBot/CLAUDE.md) - Comprehensive notifications management system with one-time/recurring reminders, event notifications, live notifications board with Discord timestamps, and auto-updating embeds
+**Errors:** Full stack trace in logs, ephemeral messages for users
 
 ---
 
-## 🔄 Dodawanie Nowego Bota
+## 🎯 Summary
 
-1. Skopiuj strukturę StarBot/ do NewBot/
-2. Zaktualizuj config/config.js z nowymi zmiennymi środowiskowymi
-3. Dodaj zmienne do .env i .env.example
-4. Dodaj bot do bot-config.json
-5. Dodaj kolor i emoji do utils/consoleLogger.js (sekcje botColors i botEmojis)
-6. Dodaj skrypt do package.json
-7. Stwórz NewBot/CLAUDE.md z dokumentacją
-
----
-
-## 🎯 Podsumowanie
-
-Projekt STAR wykorzystuje sprawdzoną architekturę z Polski Squad:
-- ✅ Modularny system botów
-- ✅ Centralny system logowania
-- ✅ Łatwe dodawanie nowych botów
-- ✅ Konfiguracja per środowisko
-- ✅ Automatyczne zarządzanie logami
+STAR uses proven architecture:
+- ✅ Modular bot system
+- ✅ Centralized logging
+- ✅ Easy bot addition
+- ✅ Per-environment configuration
+- ✅ Automatic log management
+- ✅ Auto-update script
+- ✅ Slash commands auto-registration on bot startup
