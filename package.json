@@ -8,7 +8,8 @@
     "dev": "node index.js",
     "local": "node index.js local",
     "starbot": "node StarBot/index.js",
-    "deploy-commands": "node StarBot/deploy-commands.js"
+    "deploy-commands": "node StarBot/deploy-commands.js",
+    "update": "node update.js"
   },
   "keywords": [
     "discord",
