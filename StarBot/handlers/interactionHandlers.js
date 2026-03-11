@@ -1,4 +1,5 @@
 const messages = require('../config/messages');
+const { ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
 async function handleInteraction(interaction, sharedState) {
     const { logger } = sharedState;
@@ -12,6 +13,9 @@ async function handleInteraction(interaction, sharedState) {
         }
         else if (interaction.isStringSelectMenu()) {
             await handleSelectMenu(interaction, sharedState);
+        }
+        else if (interaction.isModalSubmit()) {
+            await handleModalSubmit(interaction, sharedState);
         }
     } catch (error) {
         logger.error('Error handling interaction:', error);
@@ -437,10 +441,85 @@ async function handleButton(interaction, sharedState) {
     const customId = interaction.customId;
     logger.info(`Button: ${customId} by ${interaction.user.tag}`);
 
+    // Create notification button
+    if (customId === 'notification_create') {
+        await handleNotificationCreateButton(interaction, sharedState);
+        return;
+    }
+
+    // Quick time preset buttons
+    if (customId.startsWith('quick_time_')) {
+        await handleQuickTimeButton(interaction, sharedState);
+        return;
+    }
+
+    // Default
     await interaction.reply({
         content: messages.info.processing,
         ephemeral: true
     });
+}
+
+// Handle notification create button
+async function handleNotificationCreateButton(interaction, sharedState) {
+    // Show select menu for notification type
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('notification_type_select')
+                .setPlaceholder('Choose notification type')
+                .addOptions([
+                    {
+                        label: 'One-Time Reminder',
+                        description: 'Trigger once at specific time',
+                        value: 'one-time',
+                        emoji: '⏰'
+                    },
+                    {
+                        label: 'Recurring Reminder',
+                        description: 'Daily or weekly schedules',
+                        value: 'recurring',
+                        emoji: '🔄'
+                    },
+                    {
+                        label: 'Event with Notifications',
+                        description: 'Multi-stage notifications (24h, 1h, start)',
+                        value: 'event',
+                        emoji: '📅'
+                    }
+                ])
+        );
+
+    await interaction.reply({
+        content: '**Step 1:** Choose notification type',
+        components: [row],
+        ephemeral: true
+    });
+}
+
+// Handle quick time preset button
+async function handleQuickTimeButton(interaction, sharedState) {
+    // Extract time from customId (e.g., 'quick_time_5m' -> '5m')
+    const timePreset = interaction.customId.replace('quick_time_', '');
+
+    // Store time in temporary state and show modal for message
+    // For now, show a simple modal
+    const modal = new ModalBuilder()
+        .setCustomId(`notification_modal_${timePreset}`)
+        .setTitle('Create Quick Reminder');
+
+    const messageInput = new TextInputBuilder()
+        .setCustomId('notification_message')
+        .setLabel('Reminder Message')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Enter your reminder message')
+        .setRequired(true)
+        .setMaxLength(200);
+
+    const firstRow = new ActionRowBuilder().addComponents(messageInput);
+    modal.addComponents(firstRow);
+
+    await interaction.showModal(modal);
 }
 
 async function handleSelectMenu(interaction, sharedState) {
@@ -449,10 +528,354 @@ async function handleSelectMenu(interaction, sharedState) {
     const customId = interaction.customId;
     logger.info(`Select Menu: ${customId} by ${interaction.user.tag}`);
 
+    // Notification type selection
+    if (customId === 'notification_type_select') {
+        await handleNotificationTypeSelect(interaction, sharedState);
+        return;
+    }
+
+    // Quick time selection
+    if (customId.startsWith('quick_time_select_')) {
+        await handleQuickTimeSelect(interaction, sharedState);
+        return;
+    }
+
+    // Default
     await interaction.reply({
         content: messages.info.processing,
         ephemeral: true
     });
+}
+
+// Handle notification type selection
+async function handleNotificationTypeSelect(interaction, sharedState) {
+    const selectedType = interaction.values[0];
+
+    // Show quick time selection for one-time reminders
+    if (selectedType === 'one-time') {
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('quick_time_select_onetime')
+                    .setPlaceholder('Choose when to trigger')
+                    .addOptions([
+                        { label: 'In 5 minutes', value: '5m', emoji: '⏰' },
+                        { label: 'In 15 minutes', value: '15m', emoji: '⏰' },
+                        { label: 'In 30 minutes', value: '30m', emoji: '⏰' },
+                        { label: 'In 1 hour', value: '1h', emoji: '⏰' },
+                        { label: 'In 2 hours', value: '2h', emoji: '⏰' },
+                        { label: 'In 6 hours', value: '6h', emoji: '⏰' },
+                        { label: 'In 12 hours', value: '12h', emoji: '⏰' },
+                        { label: 'In 1 day', value: '1d', emoji: '📅' },
+                        { label: 'Custom time...', value: 'custom', emoji: '✏️' }
+                    ])
+            );
+
+        await interaction.update({
+            content: '**Step 2:** Choose when to trigger the reminder',
+            components: [row]
+        });
+    }
+    // Show recurring options
+    else if (selectedType === 'recurring') {
+        // Show modal for recurring setup
+        const modal = new ModalBuilder()
+            .setCustomId('notification_modal_recurring')
+            .setTitle('Create Recurring Reminder');
+
+        const timeInput = new TextInputBuilder()
+            .setCustomId('time')
+            .setLabel('Time (HH:MM format)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('20:00')
+            .setRequired(true)
+            .setMaxLength(5);
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('message')
+            .setLabel('Reminder Message')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Daily reminder message')
+            .setRequired(true)
+            .setMaxLength(200);
+
+        const frequencyInput = new TextInputBuilder()
+            .setCustomId('frequency')
+            .setLabel('Frequency (daily or weekly)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('daily')
+            .setRequired(true)
+            .setMaxLength(10);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(timeInput),
+            new ActionRowBuilder().addComponents(messageInput),
+            new ActionRowBuilder().addComponents(frequencyInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+    // Show event options
+    else if (selectedType === 'event') {
+        // Show modal for event setup
+        const modal = new ModalBuilder()
+            .setCustomId('notification_modal_event')
+            .setTitle('Create Event Notification');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Event Name')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Raid Boss - Ender Dragon')
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const timeInput = new TextInputBuilder()
+            .setCustomId('time')
+            .setLabel('Event Time (YYYY-MM-DD HH:MM)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('2024-12-31 21:00')
+            .setRequired(true);
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('message')
+            .setLabel('Event Description')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Epic raid event! Join us!')
+            .setRequired(true)
+            .setMaxLength(500);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(timeInput),
+            new ActionRowBuilder().addComponents(messageInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+}
+
+// Handle quick time selection for one-time reminders
+async function handleQuickTimeSelect(interaction, sharedState) {
+    const selectedTime = interaction.values[0];
+
+    if (selectedTime === 'custom') {
+        // Show modal for custom time
+        const modal = new ModalBuilder()
+            .setCustomId('notification_modal_custom')
+            .setTitle('Create Reminder (Custom Time)');
+
+        const timeInput = new TextInputBuilder()
+            .setCustomId('time')
+            .setLabel('Time (YYYY-MM-DD HH:MM or 2h, 30m, etc)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('2024-12-31 20:00 or 2h')
+            .setRequired(true);
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('message')
+            .setLabel('Reminder Message')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Your reminder message')
+            .setRequired(true)
+            .setMaxLength(200);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(timeInput),
+            new ActionRowBuilder().addComponents(messageInput)
+        );
+
+        await interaction.showModal(modal);
+    } else {
+        // Quick time - show modal for message only
+        const modal = new ModalBuilder()
+            .setCustomId(`notification_modal_quick_${selectedTime}`)
+            .setTitle(`Create Reminder (in ${selectedTime})`);
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('message')
+            .setLabel('Reminder Message')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Your reminder message')
+            .setRequired(true)
+            .setMaxLength(200);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(messageInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+}
+
+// Handle modal submissions
+async function handleModalSubmit(interaction, sharedState) {
+    const { notificationManager, boardManager, logger, config } = sharedState;
+    const customId = interaction.customId;
+
+    logger.info(`Modal Submit: ${customId} by ${interaction.user.tag}`);
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        // Quick reminder with preset time
+        if (customId.startsWith('notification_modal_quick_')) {
+            const timePreset = customId.replace('notification_modal_quick_', '');
+            const message = interaction.fields.getTextInputValue('message');
+
+            // Parse time
+            const triggerAt = parseTime(timePreset);
+            if (!triggerAt) {
+                await interaction.editReply({ content: messages.errors.invalidTime });
+                return;
+            }
+
+            // Create reminder
+            const reminder = await notificationManager.createReminder(
+                interaction.user.id,
+                triggerAt,
+                message,
+                interaction.channel.id,
+                [],
+                [],
+                'CUSTOM'
+            );
+
+            await boardManager.createEmbed(reminder);
+            await interaction.editReply({ content: `✅ Reminder created! Will trigger in ${timePreset}.\nID: **${reminder.id}**` });
+            logger.success(`Created quick reminder ${reminder.id}`);
+        }
+        // Custom time reminder
+        else if (customId === 'notification_modal_custom') {
+            const timeInput = interaction.fields.getTextInputValue('time');
+            const message = interaction.fields.getTextInputValue('message');
+
+            const triggerAt = parseTime(timeInput);
+            if (!triggerAt) {
+                await interaction.editReply({ content: messages.errors.invalidTime });
+                return;
+            }
+
+            if (triggerAt < new Date()) {
+                await interaction.editReply({ content: '❌ Trigger time cannot be in the past.' });
+                return;
+            }
+
+            const reminder = await notificationManager.createReminder(
+                interaction.user.id,
+                triggerAt,
+                message,
+                interaction.channel.id,
+                [],
+                [],
+                'CUSTOM'
+            );
+
+            await boardManager.createEmbed(reminder);
+            await interaction.editReply({ content: `✅ Reminder created!\nID: **${reminder.id}**` });
+            logger.success(`Created custom reminder ${reminder.id}`);
+        }
+        // Recurring reminder
+        else if (customId === 'notification_modal_recurring') {
+            const time = interaction.fields.getTextInputValue('time');
+            const message = interaction.fields.getTextInputValue('message');
+            const frequency = interaction.fields.getTextInputValue('frequency').toLowerCase();
+
+            if (!/^\d{1,2}:\d{2}$/.test(time)) {
+                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00").' });
+                return;
+            }
+
+            if (!['daily', 'weekly'].includes(frequency)) {
+                await interaction.editReply({ content: '❌ Frequency must be "daily" or "weekly".' });
+                return;
+            }
+
+            const recurring = await notificationManager.createRecurring(
+                interaction.user.id,
+                time,
+                frequency,
+                message,
+                interaction.channel.id,
+                [],
+                [],
+                'DAILY_REMINDERS'
+            );
+
+            await boardManager.createEmbed(recurring);
+            await interaction.editReply({ content: `✅ Recurring reminder created!\nID: **${recurring.id}**\nNext trigger: ${new Date(recurring.nextTrigger).toLocaleString()}` });
+            logger.success(`Created recurring reminder ${recurring.id}`);
+        }
+        // Event
+        else if (customId === 'notification_modal_event') {
+            const name = interaction.fields.getTextInputValue('name');
+            const timeInput = interaction.fields.getTextInputValue('time');
+            const message = interaction.fields.getTextInputValue('message');
+
+            const eventTime = parseTime(timeInput);
+            if (!eventTime) {
+                await interaction.editReply({ content: messages.errors.invalidTime });
+                return;
+            }
+
+            if (eventTime < new Date()) {
+                await interaction.editReply({ content: '❌ Event time cannot be in the past.' });
+                return;
+            }
+
+            const event = await notificationManager.createEvent(
+                interaction.user.id,
+                name,
+                eventTime,
+                message,
+                interaction.channel.id,
+                [],
+                [],
+                'BOSS_EVENTS',
+                [-86400000, -3600000, 0] // 24h, 1h, start
+            );
+
+            await boardManager.createEmbed(event);
+            await interaction.editReply({ content: `✅ Event created!\nID: **${event.id}**\nNotifications: 24h before, 1h before, at start` });
+            logger.success(`Created event ${event.id}`);
+        }
+
+    } catch (error) {
+        logger.error('Error handling modal submit:', error);
+        await interaction.editReply({ content: messages.errors.generic });
+    }
+}
+
+// Helper function to parse time input (copied from slash commands)
+function parseTime(input) {
+    // Try ISO format first
+    const isoDate = new Date(input);
+    if (!isNaN(isoDate.getTime())) {
+        return isoDate;
+    }
+
+    // Try relative time (e.g., "2h", "30m", "1d")
+    const relativeMatch = input.match(/^(\d+)(m|h|d)$/);
+    if (relativeMatch) {
+        const amount = parseInt(relativeMatch[1]);
+        const unit = relativeMatch[2];
+
+        const now = new Date();
+        switch (unit) {
+            case 'm':
+                now.setMinutes(now.getMinutes() + amount);
+                break;
+            case 'h':
+                now.setHours(now.getHours() + amount);
+                break;
+            case 'd':
+                now.setDate(now.getDate() + amount);
+                break;
+        }
+        return now;
+    }
+
+    return null;
 }
 
 module.exports = {

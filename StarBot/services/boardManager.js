@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const messages = require('../config/messages');
 
 class BoardManager {
@@ -9,6 +9,7 @@ class BoardManager {
         this.notificationManager = notificationManager;
         this.boardChannel = null;
         this.updateInterval = null;
+        this.controlPanelMessageId = null;
     }
 
     async initialize() {
@@ -28,6 +29,9 @@ class BoardManager {
 
             // Initial sync
             await this.syncAllNotifications();
+
+            // Ensure control panel exists
+            await this.ensureControlPanel();
         } catch (error) {
             this.logger.error('Failed to initialize BoardManager:', error);
         }
@@ -275,6 +279,57 @@ class BoardManager {
         for (const notification of activeNotifications) {
             await this.updateEmbed(notification);
         }
+    }
+
+    // Create or update control panel
+    async ensureControlPanel() {
+        if (!this.boardChannel) {
+            this.logger.error('Board channel not initialized');
+            return;
+        }
+
+        try {
+            // Check if control panel exists
+            if (this.controlPanelMessageId) {
+                try {
+                    const message = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
+                    // Update existing panel
+                    await message.edit(this.buildControlPanel());
+                    return;
+                } catch (error) {
+                    // Message doesn't exist, create new one
+                    this.controlPanelMessageId = null;
+                }
+            }
+
+            // Create new control panel
+            const message = await this.boardChannel.send(this.buildControlPanel());
+            this.controlPanelMessageId = message.id;
+            this.logger.success('Control panel created');
+
+        } catch (error) {
+            this.logger.error('Failed to ensure control panel:', error);
+        }
+    }
+
+    // Build control panel with button
+    buildControlPanel() {
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2) // Blurple
+            .setTitle('📋 Notification Control Panel')
+            .setDescription('Click the button below to create a new notification.\n\nYou can create:\n• ⏰ **One-time reminders** - Trigger once at specific time\n• 🔄 **Recurring reminders** - Daily or weekly schedules\n• 📅 **Events** - Multi-stage notifications (24h, 1h, start)')
+            .setFooter({ text: 'All active notifications will appear above this panel' });
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('notification_create')
+                    .setLabel('➕ Add New Notification')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🔔')
+            );
+
+        return { embeds: [embed], components: [row] };
     }
 }
 
