@@ -876,7 +876,7 @@ async function handleQuickTimeSelect(interaction, sharedState) {
 
 // Handle modal submissions
 async function handleModalSubmit(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, config } = sharedState;
+    const { notificationManager, boardManager, logger, config, userStates } = sharedState;
     const customId = interaction.customId;
 
     logger.info(`Modal Submit: ${customId} by ${interaction.user.tag}`);
