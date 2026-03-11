@@ -1,0 +1,8 @@
+{
+  "production": [
+    "starbot"
+  ],
+  "development": [
+    "starbot"
+  ]
+}

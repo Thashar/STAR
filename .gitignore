@@ -1,0 +1,24 @@
+# Zmienne środowiskowe
+.env
+
+# Node modules
+node_modules/
+
+# Logi
+logs/
+*.log
+
+# Dane botów
+*/data/
+*/temp/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Package lock (opcjonalnie)
+# package-lock.json
