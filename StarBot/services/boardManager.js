@@ -92,6 +92,9 @@ class BoardManager {
             // Update notification with message ID
             await this.notificationManager.updateBoardMessageId(notification.id, message.id);
 
+            // Move control panel to bottom
+            await this.ensureControlPanel();
+
             this.logger.info(`Created board embed for notification: ${notification.id}`);
             return message;
         } catch (error) {
@@ -305,23 +308,38 @@ class BoardManager {
         }
 
         try {
-            // Check if control panel exists
+            // Fetch last message in channel to check if control panel already exists
+            const messages = await this.boardChannel.messages.fetch({ limit: 1 });
+            const lastMessage = messages.first();
+
+            // Check if last message is control panel from this bot
+            if (lastMessage &&
+                lastMessage.author.id === this.client.user.id &&
+                lastMessage.embeds.length > 0 &&
+                lastMessage.embeds[0].title === '📋 Notification Control Panel') {
+
+                // Control panel already exists at bottom - just update it
+                this.controlPanelMessageId = lastMessage.id;
+                this.logger.info('Control panel already exists at bottom - no action needed');
+                return;
+            }
+
+            // If we have stored ID but it's not the last message, it means new notifications were added
+            // In this case, we need to move control panel to bottom
             if (this.controlPanelMessageId) {
                 try {
-                    const message = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
-                    // Update existing panel
-                    await message.edit(this.buildControlPanel());
-                    return;
+                    const oldPanel = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
+                    await oldPanel.delete();
+                    this.logger.info('Deleted old control panel (not at bottom)');
                 } catch (error) {
-                    // Message doesn't exist, create new one
-                    this.controlPanelMessageId = null;
+                    // Old panel doesn't exist, that's fine
                 }
             }
 
-            // Create new control panel
+            // Create new control panel at bottom
             const message = await this.boardChannel.send(this.buildControlPanel());
             this.controlPanelMessageId = message.id;
-            this.logger.success('Control panel created');
+            this.logger.success('Control panel created at bottom');
 
         } catch (error) {
             this.logger.error('Failed to ensure control panel:', error);
