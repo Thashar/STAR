@@ -33,6 +33,9 @@ const notificationManager = new NotificationManager(config, logger);
 const boardManager = new BoardManager(client, config, logger, notificationManager);
 const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
 
+// User states for multi-step interactions
+const userStates = new Map();
+
 // Shared state
 const sharedState = {
     client,
@@ -40,7 +43,8 @@ const sharedState = {
     logger,
     notificationManager,
     boardManager,
-    scheduler
+    scheduler,
+    userStates
 };
 
 // Register slash commands
