@@ -730,7 +730,7 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const timeInput = new TextInputBuilder()
             .setCustomId('time')
-            .setLabel('Time (HH:MM) or Interval (1h, 2h, 1d, 2d)')
+            .setLabel('Time or Interval (20:00 / 1h / 2d)')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('20:00 or 1h or 2d')
             .setRequired(true)
@@ -746,7 +746,7 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const frequencyInput = new TextInputBuilder()
             .setCustomId('frequency')
-            .setLabel('Frequency (daily/weekly, or leave empty for interval)')
+            .setLabel('Frequency (daily/weekly or empty)')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('daily or empty for interval')
             .setRequired(false)
