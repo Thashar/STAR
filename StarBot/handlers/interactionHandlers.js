@@ -751,11 +751,11 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const timeInput = new TextInputBuilder()
             .setCustomId('time')
-            .setLabel('Time or Interval (20:00 / 1h / 2d)')
+            .setLabel('Time (HH:MM)')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('20:00 or 1h or 2d')
+            .setPlaceholder('20:00')
             .setRequired(true)
-            .setMaxLength(10);
+            .setMaxLength(5);
 
         const messageInput = new TextInputBuilder()
             .setCustomId('message')
@@ -767,10 +767,10 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const frequencyInput = new TextInputBuilder()
             .setCustomId('frequency')
-            .setLabel('Frequency (daily/weekly or empty)')
+            .setLabel('Frequency (e.g. 1d, 2d, 5h, 12h)')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('daily or empty for interval')
-            .setRequired(false)
+            .setPlaceholder('1d or 5h')
+            .setRequired(true)
             .setMaxLength(10);
 
         modal.addComponents(
@@ -947,18 +947,15 @@ async function handleModalSubmit(interaction, sharedState) {
             const message = interaction.fields.getTextInputValue('message');
             const frequency = interaction.fields.getTextInputValue('frequency').toLowerCase().trim();
 
-            // Validate time format: either HH:MM or interval (1h, 2h, 1d, 2d)
-            const isTimeFormat = /^\d{1,2}:\d{2}$/.test(time);
-            const isIntervalFormat = /^\d+[hd]$/.test(time);
-
-            if (!isTimeFormat && !isIntervalFormat) {
-                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00") or interval (e.g., "1h", "2d").' });
+            // Validate time format: must be HH:MM
+            if (!/^\d{1,2}:\d{2}$/.test(time)) {
+                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00").' });
                 return;
             }
 
-            // For time-based, frequency is required. For interval-based, frequency is ignored
-            if (isTimeFormat && frequency && !['daily', 'weekly'].includes(frequency)) {
-                await interaction.editReply({ content: '❌ Frequency must be "daily" or "weekly" for time-based reminders.' });
+            // Validate frequency: must be interval format (1d, 2d, 5h, 12h, etc.)
+            if (!/^\d+[hd]$/.test(frequency)) {
+                await interaction.editReply({ content: '❌ Invalid frequency format. Use format like: 1d, 2d, 5h, 12h' });
                 return;
             }
 
@@ -967,7 +964,7 @@ async function handleModalSubmit(interaction, sharedState) {
                 type: 'recurring',
                 time,
                 message,
-                frequency: isTimeFormat ? (frequency || 'daily') : 'interval',
+                frequency,
                 step: 'select_channel'
             });
 

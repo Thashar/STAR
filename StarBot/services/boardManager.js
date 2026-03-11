@@ -255,8 +255,26 @@ class BoardManager {
 
             // Frequency
             let frequencyText;
-            if (notification.interval) {
-                // Interval-based: "Every 1 hour", "Every 2 days"
+            if (notification.frequency) {
+                // New system: frequency (1d, 5h) + time (HH:MM)
+                const match = notification.frequency.match(/^(\d+)(h|d)$/);
+                if (match) {
+                    const value = match[1];
+                    const unit = match[2];
+
+                    if (unit === 'h') {
+                        // Hourly: "Every 5 hours"
+                        frequencyText = `Every ${value} ${value === '1' ? 'hour' : 'hours'}`;
+                    } else {
+                        // Daily: "Every 2 days at 20:00"
+                        frequencyText = `Every ${value} ${value === '1' ? 'day' : 'days'} at ${notification.time}`;
+                    }
+                } else {
+                    frequencyText = `Every ${notification.frequency}`;
+                }
+            }
+            // Legacy support for old interval system
+            else if (notification.interval) {
                 const match = notification.interval.match(/^(\d+)(h|d)$/);
                 if (match) {
                     const value = match[1];
@@ -265,8 +283,9 @@ class BoardManager {
                 } else {
                     frequencyText = `Every ${notification.interval}`;
                 }
-            } else {
-                // Time-based: "daily at HH:MM" or "weekly at HH:MM (Mon, Wed, Fri)"
+            }
+            // Legacy support for old time-based system
+            else {
                 frequencyText = notification.type;
                 if (notification.time) {
                     frequencyText += ` at ${notification.time}`;

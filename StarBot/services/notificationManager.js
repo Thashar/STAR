@@ -87,14 +87,24 @@ class NotificationManager {
     async createRecurring(creatorId, time, frequency, message, channelId, roles = [], users = [], category = 'CUSTOM', daysOfWeek = null) {
         const id = this.generateId();
 
-        // Check if time is interval format (1h, 2h, 1d, 2d) or time format (HH:MM)
-        const isInterval = /^\d+[hd]$/.test(time);
+        // Parse frequency to determine if it's hours or days based
+        const frequencyMatch = frequency.match(/^(\d+)([hd])$/);
+        if (!frequencyMatch) {
+            throw new Error('Invalid frequency format');
+        }
+
+        const frequencyValue = parseInt(frequencyMatch[1]);
+        const frequencyUnit = frequencyMatch[2]; // 'h' or 'd'
 
         const recurring = {
             id: `rec_${id}`,
-            type: isInterval ? 'interval' : frequency, // 'interval', 'daily', 'weekly', 'custom'
+            type: 'recurring',
             creator: creatorId,
             createdAt: new Date().toISOString(),
+            time, // HH:MM
+            frequency, // 1d, 5h, etc.
+            frequencyValue, // 1, 5, etc.
+            frequencyUnit, // 'h' or 'd'
             channel: channelId,
             roles,
             users,
@@ -104,24 +114,19 @@ class NotificationManager {
             boardMessageId: null
         };
 
-        if (isInterval) {
-            // Interval-based recurring (1h, 2h, 1d, 2d)
-            recurring.interval = time;
-            recurring.time = null;
-            recurring.daysOfWeek = null;
-            recurring.nextTrigger = this.calculateNextTriggerFromInterval(time);
+        // Calculate next trigger based on frequency
+        if (frequencyUnit === 'h') {
+            // Hours-based: trigger every X hours from now
+            recurring.nextTrigger = this.calculateNextTriggerHourly(frequencyValue);
         } else {
-            // Time-based recurring (HH:MM)
-            recurring.time = time;
-            recurring.interval = null;
-            recurring.daysOfWeek = daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-            recurring.nextTrigger = this.calculateNextTrigger(time, daysOfWeek);
+            // Days-based: trigger at specific time every X days
+            recurring.nextTrigger = this.calculateNextTriggerDaily(time, frequencyValue);
         }
 
         this.data.recurring.push(recurring);
         await this.saveData();
 
-        this.logger.info(`Created recurring reminder: ${recurring.id} (${isInterval ? 'interval' : 'time-based'})`);
+        this.logger.info(`Created recurring reminder: ${recurring.id} (${frequency})`);
         return recurring;
     }
 
@@ -202,6 +207,29 @@ class NotificationManager {
             while (!daysOfWeek.includes(next.getDay())) {
                 next.setDate(next.getDate() + 1);
             }
+        }
+
+        return next.toISOString();
+    }
+
+    // Calculate next trigger for hourly frequency (e.g., every 5 hours)
+    calculateNextTriggerHourly(hours) {
+        const now = new Date();
+        const nextTrigger = new Date(now.getTime() + (hours * 60 * 60 * 1000));
+        return nextTrigger.toISOString();
+    }
+
+    // Calculate next trigger for daily frequency at specific time (e.g., every 2 days at 20:00)
+    calculateNextTriggerDaily(time, days) {
+        const now = new Date();
+        const [hours, minutes] = time.split(':').map(Number);
+
+        const next = new Date();
+        next.setHours(hours, minutes, 0, 0);
+
+        // If time has passed today, move to next occurrence
+        if (next <= now) {
+            next.setDate(next.getDate() + days);
         }
 
         return next.toISOString();
@@ -325,11 +353,20 @@ class NotificationManager {
 
         let nextTrigger;
 
-        if (notification.interval) {
-            // Interval-based: calculate from last trigger to maintain consistent intervals
+        // New system: all recurring have frequency
+        if (notification.frequencyUnit === 'h') {
+            // Hourly: add hours to last trigger time
+            const lastTrigger = new Date(notification.nextTrigger);
+            nextTrigger = new Date(lastTrigger.getTime() + (notification.frequencyValue * 60 * 60 * 1000)).toISOString();
+        } else if (notification.frequencyUnit === 'd') {
+            // Daily: add days to last trigger time (keeping same time of day)
+            const lastTrigger = new Date(notification.nextTrigger);
+            nextTrigger = new Date(lastTrigger.getTime() + (notification.frequencyValue * 24 * 60 * 60 * 1000)).toISOString();
+        }
+        // Legacy support for old interval-based system
+        else if (notification.interval) {
             nextTrigger = this.calculateNextTriggerFromInterval(notification.interval, notification.nextTrigger);
-        } else if (notification.time) {
-            // Time-based: calculate from now
+        } else if (notification.time && notification.daysOfWeek) {
             nextTrigger = this.calculateNextTrigger(notification.time, notification.daysOfWeek);
         } else {
             return false;
