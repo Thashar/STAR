@@ -86,27 +86,42 @@ class NotificationManager {
     // Create recurring reminder
     async createRecurring(creatorId, time, frequency, message, channelId, roles = [], users = [], category = 'CUSTOM', daysOfWeek = null) {
         const id = this.generateId();
+
+        // Check if time is interval format (1h, 2h, 1d, 2d) or time format (HH:MM)
+        const isInterval = /^\d+[hd]$/.test(time);
+
         const recurring = {
             id: `rec_${id}`,
-            type: frequency, // 'daily', 'weekly', 'custom'
+            type: isInterval ? 'interval' : frequency, // 'interval', 'daily', 'weekly', 'custom'
             creator: creatorId,
             createdAt: new Date().toISOString(),
-            time, // Format: "HH:MM"
-            daysOfWeek: daysOfWeek || [0, 1, 2, 3, 4, 5, 6], // All days if not specified
             channel: channelId,
             roles,
             users,
             message,
             category,
             status: 'active',
-            nextTrigger: this.calculateNextTrigger(time, daysOfWeek),
             boardMessageId: null
         };
+
+        if (isInterval) {
+            // Interval-based recurring (1h, 2h, 1d, 2d)
+            recurring.interval = time;
+            recurring.time = null;
+            recurring.daysOfWeek = null;
+            recurring.nextTrigger = this.calculateNextTriggerFromInterval(time);
+        } else {
+            // Time-based recurring (HH:MM)
+            recurring.time = time;
+            recurring.interval = null;
+            recurring.daysOfWeek = daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+            recurring.nextTrigger = this.calculateNextTrigger(time, daysOfWeek);
+        }
 
         this.data.recurring.push(recurring);
         await this.saveData();
 
-        this.logger.info(`Created recurring reminder: ${recurring.id}`);
+        this.logger.info(`Created recurring reminder: ${recurring.id} (${isInterval ? 'interval' : 'time-based'})`);
         return recurring;
     }
 
@@ -141,7 +156,35 @@ class NotificationManager {
         return event;
     }
 
-    // Calculate next trigger for recurring reminders
+    // Parse interval format (1h, 2h, 1d, 2d) to milliseconds
+    parseInterval(interval) {
+        const match = interval.match(/^(\d+)(h|d)$/);
+        if (!match) {
+            throw new Error('Invalid interval format. Use format like: 1h, 2h, 1d, 2d');
+        }
+
+        const value = parseInt(match[1]);
+        const unit = match[2];
+
+        if (unit === 'h') {
+            return value * 60 * 60 * 1000; // hours to ms
+        } else if (unit === 'd') {
+            return value * 24 * 60 * 60 * 1000; // days to ms
+        }
+
+        throw new Error('Invalid interval unit. Use h (hours) or d (days)');
+    }
+
+    // Calculate next trigger for interval-based recurring reminders
+    calculateNextTriggerFromInterval(interval, lastTrigger = null) {
+        const intervalMs = this.parseInterval(interval);
+        const baseTime = lastTrigger ? new Date(lastTrigger) : new Date();
+
+        const nextTrigger = new Date(baseTime.getTime() + intervalMs);
+        return nextTrigger.toISOString();
+    }
+
+    // Calculate next trigger for time-based recurring reminders
     calculateNextTrigger(time, daysOfWeek = null) {
         const now = new Date();
         const [hours, minutes] = time.split(':').map(Number);
@@ -278,9 +321,20 @@ class NotificationManager {
     // Update next trigger for recurring
     async updateNextTrigger(id) {
         const notification = this.getNotification(id);
-        if (!notification || !notification.time) return false;
+        if (!notification) return false;
 
-        const nextTrigger = this.calculateNextTrigger(notification.time, notification.daysOfWeek);
+        let nextTrigger;
+
+        if (notification.interval) {
+            // Interval-based: calculate from last trigger to maintain consistent intervals
+            nextTrigger = this.calculateNextTriggerFromInterval(notification.interval, notification.nextTrigger);
+        } else if (notification.time) {
+            // Time-based: calculate from now
+            nextTrigger = this.calculateNextTrigger(notification.time, notification.daysOfWeek);
+        } else {
+            return false;
+        }
+
         return await this.updateNotification(id, { nextTrigger });
     }
 

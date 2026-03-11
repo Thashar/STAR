@@ -1,6 +1,9 @@
 # STAR - Discord Bots System
 
-**IMPORTANT: ALWAYS RESPOND IN ENGLISH.** This project is entirely in English - code, comments, documentation, and bot messages.
+**LANGUAGE CONVENTION:**
+- **Conversations with user:** ALWAYS in POLISH
+- **Bot code, comments, logs, and bot messages:** ALWAYS in ENGLISH
+- **This documentation file (CLAUDE.md):** Can be in Polish or English as needed
 
 **COMMIT INSTRUCTIONS:**
 - After making changes, ALWAYS commit and push WITHOUT ASKING

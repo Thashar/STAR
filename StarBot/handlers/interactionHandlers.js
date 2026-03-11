@@ -1,5 +1,5 @@
 const messages = require('../config/messages');
-const { ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, ChannelSelectMenuBuilder, RoleSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 async function handleInteraction(interaction, sharedState) {
     const { logger } = sharedState;
@@ -13,6 +13,12 @@ async function handleInteraction(interaction, sharedState) {
         }
         else if (interaction.isStringSelectMenu()) {
             await handleSelectMenu(interaction, sharedState);
+        }
+        else if (interaction.isChannelSelectMenu()) {
+            await handleChannelSelectMenu(interaction, sharedState);
+        }
+        else if (interaction.isRoleSelectMenu()) {
+            await handleRoleSelectMenu(interaction, sharedState);
         }
         else if (interaction.isModalSubmit()) {
             await handleModalSubmit(interaction, sharedState);
@@ -453,6 +459,12 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    // Skip role selection for recurring reminders
+    if (customId === 'recurring_skip_roles') {
+        await handleRecurringSkipRoles(interaction, sharedState);
+        return;
+    }
+
     // Default
     await interaction.reply({
         content: messages.info.processing,
@@ -547,6 +559,139 @@ async function handleSelectMenu(interaction, sharedState) {
     });
 }
 
+// Handle channel select menu
+async function handleChannelSelectMenu(interaction, sharedState) {
+    const { logger, notificationManager, userStates } = sharedState;
+
+    const customId = interaction.customId;
+    logger.info(`Channel Select: ${customId} by ${interaction.user.tag}`);
+
+    if (customId === 'recurring_channel_select') {
+        const userState = userStates.get(interaction.user.id);
+
+        if (!userState || userState.type !== 'recurring' || userState.step !== 'select_channel') {
+            await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+            return;
+        }
+
+        const selectedChannel = interaction.channels.first();
+
+        // Update user state with selected channel
+        userState.channelId = selectedChannel.id;
+        userState.step = 'select_roles';
+        userStates.set(interaction.user.id, userState);
+
+        // Show role select menu
+        const roleSelect = new RoleSelectMenuBuilder()
+            .setCustomId('recurring_role_select')
+            .setPlaceholder('Select roles to ping (optional)')
+            .setMinValues(0)
+            .setMaxValues(5);
+
+        const skipButton = new ButtonBuilder()
+            .setCustomId('recurring_skip_roles')
+            .setLabel('Skip - No role pings')
+            .setStyle(ButtonStyle.Secondary);
+
+        const row1 = new ActionRowBuilder().addComponents(roleSelect);
+        const row2 = new ActionRowBuilder().addComponents(skipButton);
+
+        await interaction.update({
+            content: `📍 **Step 3/3:** Select roles to ping (optional)\nChannel: <#${selectedChannel.id}>`,
+            components: [row1, row2]
+        });
+    }
+}
+
+// Handle role select menu
+async function handleRoleSelectMenu(interaction, sharedState) {
+    const { logger, notificationManager, boardManager, userStates } = sharedState;
+
+    const customId = interaction.customId;
+    logger.info(`Role Select: ${customId} by ${interaction.user.tag}`);
+
+    if (customId === 'recurring_role_select') {
+        const userState = userStates.get(interaction.user.id);
+
+        if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
+            await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+            return;
+        }
+
+        const selectedRoles = interaction.roles.map(role => role.id);
+
+        // Create the recurring reminder
+        const recurring = await notificationManager.createRecurring(
+            interaction.user.id,
+            userState.time,
+            userState.frequency,
+            userState.message,
+            userState.channelId,
+            selectedRoles,
+            [],
+            'DAILY_REMINDERS'
+        );
+
+        await boardManager.createEmbed(recurring);
+
+        // Clear user state
+        userStates.delete(interaction.user.id);
+
+        const roleText = selectedRoles.length > 0 ? selectedRoles.map(r => `<@&${r}>`).join(', ') : 'None';
+
+        await interaction.update({
+            content: `✅ **Recurring reminder created!**\n\n` +
+                `**ID:** ${recurring.id}\n` +
+                `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
+                `**Channel:** <#${userState.channelId}>\n` +
+                `**Roles:** ${roleText}`,
+            components: []
+        });
+
+        logger.success(`Created recurring reminder ${recurring.id}`);
+    }
+}
+
+// Handle skip roles button for recurring reminders
+async function handleRecurringSkipRoles(interaction, sharedState) {
+    const { logger, notificationManager, boardManager, userStates } = sharedState;
+
+    const userState = userStates.get(interaction.user.id);
+
+    if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
+        await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+        return;
+    }
+
+    // Create the recurring reminder without role pings
+    const recurring = await notificationManager.createRecurring(
+        interaction.user.id,
+        userState.time,
+        userState.frequency,
+        userState.message,
+        userState.channelId,
+        [], // No roles
+        [],
+        'DAILY_REMINDERS'
+    );
+
+    await boardManager.createEmbed(recurring);
+
+    // Clear user state
+    userStates.delete(interaction.user.id);
+
+    await interaction.update({
+        content: `✅ **Recurring reminder created!**\n\n` +
+            `**ID:** ${recurring.id}\n` +
+            `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
+            `**Channel:** <#${userState.channelId}>\n` +
+            `**Roles:** None`,
+        components: []
+    });
+
+    logger.success(`Created recurring reminder ${recurring.id} (no role pings)`);
+}
+
 // Handle notification type selection
 async function handleNotificationTypeSelect(interaction, sharedState) {
     const selectedType = interaction.values[0];
@@ -585,11 +730,11 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const timeInput = new TextInputBuilder()
             .setCustomId('time')
-            .setLabel('Time (HH:MM format)')
+            .setLabel('Time (HH:MM) or Interval (1h, 2h, 1d, 2d)')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('20:00')
+            .setPlaceholder('20:00 or 1h or 2d')
             .setRequired(true)
-            .setMaxLength(5);
+            .setMaxLength(10);
 
         const messageInput = new TextInputBuilder()
             .setCustomId('message')
@@ -601,10 +746,10 @@ async function handleNotificationTypeSelect(interaction, sharedState) {
 
         const frequencyInput = new TextInputBuilder()
             .setCustomId('frequency')
-            .setLabel('Frequency (daily or weekly)')
+            .setLabel('Frequency (daily/weekly, or leave empty for interval)')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('daily')
-            .setRequired(true)
+            .setPlaceholder('daily or empty for interval')
+            .setRequired(false)
             .setMaxLength(10);
 
         modal.addComponents(
@@ -777,34 +922,49 @@ async function handleModalSubmit(interaction, sharedState) {
         }
         // Recurring reminder
         else if (customId === 'notification_modal_recurring') {
-            const time = interaction.fields.getTextInputValue('time');
+            const time = interaction.fields.getTextInputValue('time').trim();
             const message = interaction.fields.getTextInputValue('message');
-            const frequency = interaction.fields.getTextInputValue('frequency').toLowerCase();
+            const frequency = interaction.fields.getTextInputValue('frequency').toLowerCase().trim();
 
-            if (!/^\d{1,2}:\d{2}$/.test(time)) {
-                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00").' });
+            // Validate time format: either HH:MM or interval (1h, 2h, 1d, 2d)
+            const isTimeFormat = /^\d{1,2}:\d{2}$/.test(time);
+            const isIntervalFormat = /^\d+[hd]$/.test(time);
+
+            if (!isTimeFormat && !isIntervalFormat) {
+                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00") or interval (e.g., "1h", "2d").' });
                 return;
             }
 
-            if (!['daily', 'weekly'].includes(frequency)) {
-                await interaction.editReply({ content: '❌ Frequency must be "daily" or "weekly".' });
+            // For time-based, frequency is required. For interval-based, frequency is ignored
+            if (isTimeFormat && frequency && !['daily', 'weekly'].includes(frequency)) {
+                await interaction.editReply({ content: '❌ Frequency must be "daily" or "weekly" for time-based reminders.' });
                 return;
             }
 
-            const recurring = await notificationManager.createRecurring(
-                interaction.user.id,
+            // Store data in userStates for next steps (channel and role selection)
+            userStates.set(interaction.user.id, {
+                type: 'recurring',
                 time,
-                frequency,
                 message,
-                interaction.channel.id,
-                [],
-                [],
-                'DAILY_REMINDERS'
-            );
+                frequency: isTimeFormat ? (frequency || 'daily') : 'interval',
+                step: 'select_channel'
+            });
 
-            await boardManager.createEmbed(recurring);
-            await interaction.editReply({ content: `✅ Recurring reminder created!\nID: **${recurring.id}**\nNext trigger: ${new Date(recurring.nextTrigger).toLocaleString()}` });
-            logger.success(`Created recurring reminder ${recurring.id}`);
+            // Show channel select menu
+            const channels = await interaction.guild.channels.fetch();
+            const textChannels = channels.filter(ch => ch.isTextBased() && !ch.isThread());
+
+            const channelSelect = new ChannelSelectMenuBuilder()
+                .setCustomId('recurring_channel_select')
+                .setPlaceholder('Select channel for notifications')
+                .setChannelTypes([ChannelType.GuildText]);
+
+            const row = new ActionRowBuilder().addComponents(channelSelect);
+
+            await interaction.editReply({
+                content: '📍 **Step 2/3:** Select the channel where notifications will be sent',
+                components: [row]
+            });
         }
         // Event
         else if (customId === 'notification_modal_event') {

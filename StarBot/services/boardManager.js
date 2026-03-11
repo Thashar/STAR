@@ -249,14 +249,28 @@ class BoardManager {
             });
 
             // Frequency
-            let frequencyText = notification.type;
-            if (notification.time) {
-                frequencyText += ` at ${notification.time}`;
-            }
-            if (notification.daysOfWeek && notification.daysOfWeek.length < 7) {
-                const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const days = notification.daysOfWeek.map(d => dayNames[d]).join(', ');
-                frequencyText += ` (${days})`;
+            let frequencyText;
+            if (notification.interval) {
+                // Interval-based: "Every 1 hour", "Every 2 days"
+                const match = notification.interval.match(/^(\d+)(h|d)$/);
+                if (match) {
+                    const value = match[1];
+                    const unit = match[2] === 'h' ? (value === '1' ? 'hour' : 'hours') : (value === '1' ? 'day' : 'days');
+                    frequencyText = `Every ${value} ${unit}`;
+                } else {
+                    frequencyText = `Every ${notification.interval}`;
+                }
+            } else {
+                // Time-based: "daily at HH:MM" or "weekly at HH:MM (Mon, Wed, Fri)"
+                frequencyText = notification.type;
+                if (notification.time) {
+                    frequencyText += ` at ${notification.time}`;
+                }
+                if (notification.daysOfWeek && notification.daysOfWeek.length < 7) {
+                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    const days = notification.daysOfWeek.map(d => dayNames[d]).join(', ');
+                    frequencyText += ` (${days})`;
+                }
             }
 
             embed.addFields({
