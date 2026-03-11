@@ -9,12 +9,12 @@ class Scheduler {
     }
 
     initialize() {
-        // Check for notifications to trigger every minute
+        // Check for notifications to trigger every 30 seconds
         this.checkInterval = setInterval(async () => {
             await this.checkNotifications();
-        }, 60000); // 1 minute
+        }, 30000); // 30 seconds
 
-        this.logger.success('Scheduler initialized - checking every 1 minute');
+        this.logger.success('Scheduler initialized - checking every 30 seconds');
 
         // Also check immediately on start
         setTimeout(() => this.checkNotifications(), 5000);
