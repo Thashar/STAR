@@ -632,10 +632,13 @@ async function handleRoleSelectMenu(interaction, sharedState) {
     logger.info(`Role Select: ${customId} by ${interaction.user.tag}`);
 
     if (customId === 'recurring_role_select') {
+        // Defer update immediately to avoid timeout
+        await interaction.deferUpdate();
+
         const userState = userStates.get(interaction.user.id);
 
         if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
-            await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+            await interaction.editReply({ content: '❌ Session expired. Please start over.', components: [] });
             return;
         }
 
@@ -660,7 +663,7 @@ async function handleRoleSelectMenu(interaction, sharedState) {
 
         const roleText = selectedRoles.length > 0 ? selectedRoles.map(r => `<@&${r}>`).join(', ') : 'None';
 
-        await interaction.update({
+        await interaction.editReply({
             content: `✅ **Recurring reminder created!**\n\n` +
                 `**ID:** ${recurring.id}\n` +
                 `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
@@ -677,10 +680,13 @@ async function handleRoleSelectMenu(interaction, sharedState) {
 async function handleRecurringSkipRoles(interaction, sharedState) {
     const { logger, notificationManager, boardManager, userStates } = sharedState;
 
+    // Defer update immediately to avoid timeout
+    await interaction.deferUpdate();
+
     const userState = userStates.get(interaction.user.id);
 
     if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
-        await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+        await interaction.editReply({ content: '❌ Session expired. Please start over.', components: [] });
         return;
     }
 
@@ -701,7 +707,7 @@ async function handleRecurringSkipRoles(interaction, sharedState) {
     // Clear user state
     userStates.delete(interaction.user.id);
 
-    await interaction.update({
+    await interaction.editReply({
         content: `✅ **Recurring reminder created!**\n\n` +
             `**ID:** ${recurring.id}\n` +
             `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
