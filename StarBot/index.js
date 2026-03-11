@@ -3,11 +3,21 @@ const config = require('./config/config');
 const { createBotLogger } = require('../utils/consoleLogger');
 const { handleInteraction } = require('./handlers/interactionHandlers');
 
+// Services
+const NotificationManager = require('./services/notificationManager');
+const BoardManager = require('./services/boardManager');
+const Scheduler = require('./services/scheduler');
+
 const logger = createBotLogger('StarBot');
 
-// Walidacja konfiguracji
+// Validate configuration
 if (!config.token) {
-    logger.error('STARBOT_TOKEN nie jest ustawiony w pliku .env');
+    logger.error('STARBOT_TOKEN is not set in .env file');
+    process.exit(1);
+}
+
+if (!config.notificationsBoardChannelId) {
+    logger.error('STARBOT_NOTIFICATIONS_BOARD_CHANNEL is not set in .env file');
     process.exit(1);
 }
 
@@ -19,45 +29,70 @@ const client = new Client({
     ]
 });
 
-// Globalny stan współdzielony
+// Initialize services
+const notificationManager = new NotificationManager(config, logger);
+const boardManager = new BoardManager(client, config, logger, notificationManager);
+const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
+
+// Shared state
 const sharedState = {
     client,
     config,
-    logger
+    logger,
+    notificationManager,
+    boardManager,
+    scheduler
 };
 
-// Event: Bot gotowy
+// Event: Bot ready
 client.once('ready', async () => {
-    logger.success(`✅ StarBot gotowy - zalogowany jako ${client.user.tag}`);
-    logger.info(`Serwery: ${client.guilds.cache.size}`);
-    logger.info(`Użytkownicy: ${client.users.cache.size}`);
+    logger.success(`✅ StarBot ready - logged in as ${client.user.tag}`);
+    logger.info(`Servers: ${client.guilds.cache.size}`);
+    logger.info(`Users: ${client.users.cache.size}`);
+
+    // Initialize services
+    try {
+        await notificationManager.initialize();
+        await boardManager.initialize();
+        scheduler.initialize();
+
+        logger.success('All services initialized successfully');
+    } catch (error) {
+        logger.error('Failed to initialize services:', error);
+        process.exit(1);
+    }
 });
 
-// Event: Interakcje (slash commands, buttony, select menu)
+// Event: Interactions (slash commands, buttons, select menus)
 client.on('interactionCreate', async interaction => {
     await handleInteraction(interaction, sharedState);
 });
 
-// Event: Błędy
+// Event: Errors
 client.on('error', error => {
     logger.error('Discord Client Error:', error);
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-    logger.info('Otrzymano SIGINT - zamykanie bota...');
-    await client.destroy();
-    process.exit(0);
-});
+async function shutdown() {
+    logger.info('Shutting down StarBot...');
 
-process.on('SIGTERM', async () => {
-    logger.info('Otrzymano SIGTERM - zamykanie bota...');
-    await client.destroy();
-    process.exit(0);
-});
+    // Stop services
+    scheduler.stop();
+    boardManager.stopPeriodicUpdates();
 
-// Logowanie
+    // Destroy client
+    await client.destroy();
+
+    logger.success('StarBot shut down successfully');
+    process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+// Login
 client.login(config.token).catch(error => {
-    logger.error('Błąd logowania:', error);
+    logger.error('Login error:', error);
     process.exit(1);
 });

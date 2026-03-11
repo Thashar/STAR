@@ -201,7 +201,7 @@ DISCORD_LOG_WEBHOOK_URL=webhook_url_here
 
 ## 📖 Szczegółowa Dokumentacja Botów
 
-**StarBot:** [StarBot/CLAUDE.md](StarBot/CLAUDE.md) - Szczegółowa dokumentacja funkcjonalności StarBot
+**StarBot:** [StarBot/CLAUDE.md](StarBot/CLAUDE.md) - Comprehensive notifications management system with one-time/recurring reminders, event notifications, live notifications board with Discord timestamps, and auto-updating embeds
 
 ---
 
