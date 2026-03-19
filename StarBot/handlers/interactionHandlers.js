@@ -1083,6 +1083,8 @@ async function handleModalSubmit(interaction, sharedState) {
         }
         // Add event
         else if (customId === 'add_event_modal') {
+            await interaction.deferReply({ ephemeral: true });
+
             const { eventManager, eventListManager } = sharedState;
 
             const name = interaction.fields.getTextInputValue('name');
@@ -1092,26 +1094,23 @@ async function handleModalSubmit(interaction, sharedState) {
             // Parse firstTrigger
             const firstTrigger = new Date(firstTriggerStr);
             if (isNaN(firstTrigger.getTime())) {
-                await interaction.reply({
-                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)',
-                    ephemeral: true
+                await interaction.editReply({
+                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)'
                 });
                 return;
             }
 
             if (firstTrigger < new Date()) {
-                await interaction.reply({
-                    content: '❌ First trigger date cannot be in the past.',
-                    ephemeral: true
+                await interaction.editReply({
+                    content: '❌ First trigger date cannot be in the past.'
                 });
                 return;
             }
 
             // Validate interval
             if (!eventManager.validateInterval(interval)) {
-                await interaction.reply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"',
-                    ephemeral: true
+                await interaction.editReply({
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"'
                 });
                 return;
             }
@@ -1127,17 +1126,15 @@ async function handleModalSubmit(interaction, sharedState) {
                 // Update events list
                 await eventListManager.ensureEventsList();
 
-                await interaction.reply({
-                    content: `✅ **Event created!**\n📅 **Name:** ${name}\n🆔 **ID:** ${event.id}\n⏰ **Next trigger:** <t:${Math.floor(new Date(event.nextTrigger).getTime() / 1000)}:F>`,
-                    ephemeral: true
+                await interaction.editReply({
+                    content: `✅ **Event created!**\n📅 **Name:** ${name}\n🆔 **ID:** ${event.id}\n⏰ **Next trigger:** <t:${Math.floor(new Date(event.nextTrigger).getTime() / 1000)}:F>`
                 });
 
                 logger.success(`Created event ${event.id}`);
             } catch (error) {
                 logger.error('Failed to create event:', error);
-                await interaction.reply({
-                    content: `❌ Error: ${error.message}`,
-                    ephemeral: true
+                await interaction.editReply({
+                    content: `❌ Error: ${error.message}`
                 });
             }
         }
