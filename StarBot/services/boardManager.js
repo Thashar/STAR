@@ -100,7 +100,7 @@ class BoardManager {
         this.logger.info(`Creating embed for scheduled ${scheduled.id} with template ${scheduled.template.name}`);
 
         try {
-            const embed = this.buildEmbed(scheduled);
+            const embed = await this.buildEmbed(scheduled);
             const components = this.buildActionButtons(scheduled);
             const message = await this.boardChannel.send({ embeds: [embed], components });
 
@@ -137,7 +137,7 @@ class BoardManager {
 
         try {
             const message = await this.boardChannel.messages.fetch(scheduled.boardMessageId);
-            const embed = this.buildEmbed(scheduled);
+            const embed = await this.buildEmbed(scheduled);
             const components = this.buildActionButtons(scheduled);
             await message.edit({ embeds: [embed], components });
 
@@ -176,7 +176,7 @@ class BoardManager {
     }
 
     // Build embed for scheduled reminder
-    buildEmbed(scheduled) {
+    async buildEmbed(scheduled) {
         const template = scheduled.template;
 
         // Use template color if available (for embed type), otherwise default
@@ -272,9 +272,18 @@ class BoardManager {
         // Creator - get nickname from guild
         let creatorName = 'Unknown';
         if (this.boardChannel && this.boardChannel.guild) {
-            const member = this.boardChannel.guild.members.cache.get(scheduled.creator);
-            if (member) {
-                creatorName = member.displayName;
+            try {
+                // Try cache first, then fetch if not found
+                let member = this.boardChannel.guild.members.cache.get(scheduled.creator);
+                if (!member) {
+                    member = await this.boardChannel.guild.members.fetch(scheduled.creator);
+                }
+                if (member) {
+                    creatorName = member.displayName;
+                }
+            } catch (error) {
+                // User might have left the server or ID is invalid
+                this.logger.warn(`Failed to fetch member ${scheduled.creator}: ${error.message}`);
             }
         }
         embed.setFooter({ text: `Created by ${creatorName}` });
@@ -333,7 +342,8 @@ class BoardManager {
             }
 
             // Create new control panel at bottom
-            const message = await this.boardChannel.send(this.buildControlPanel());
+            const controlPanel = await this.buildControlPanel();
+            const message = await this.boardChannel.send(controlPanel);
             this.controlPanelMessageId = message.id;
             this.logger.success('Control panel created at bottom');
 
@@ -343,7 +353,7 @@ class BoardManager {
     }
 
     // Build control panel with info
-    buildControlPanel() {
+    async buildControlPanel() {
         const currentTimezone = this.timezoneManager.getGlobalTimezone();
         const currentTime = this.timezoneManager.getCurrentTime();
 
@@ -354,7 +364,8 @@ class BoardManager {
         if (templates.length === 0) {
             templatesText = '_No templates yet. Create one with `/new-reminder`_';
         } else {
-            templatesText = templates.map(t => {
+            // Fetch creator names for all templates
+            const templateLines = await Promise.all(templates.map(async (t) => {
                 const typeIcon = t.type === 'text' ? '📝' : '📋';
                 const createdDate = new Date(t.createdAt).toLocaleDateString('en-US', {
                     month: 'short',
@@ -365,14 +376,25 @@ class BoardManager {
                 // Get creator's nickname from guild
                 let creatorName = 'Unknown';
                 if (this.boardChannel && this.boardChannel.guild) {
-                    const member = this.boardChannel.guild.members.cache.get(t.creator);
-                    if (member) {
-                        creatorName = member.displayName;
+                    try {
+                        // Try cache first, then fetch if not found
+                        let member = this.boardChannel.guild.members.cache.get(t.creator);
+                        if (!member) {
+                            member = await this.boardChannel.guild.members.fetch(t.creator);
+                        }
+                        if (member) {
+                            creatorName = member.displayName;
+                        }
+                    } catch (error) {
+                        // User might have left the server or ID is invalid
+                        this.logger.warn(`Failed to fetch member ${t.creator}: ${error.message}`);
                     }
                 }
 
                 return `${typeIcon} **${t.name}** - ${creatorName} - ${createdDate}`;
-            }).join('\n');
+            }));
+
+            templatesText = templateLines.join('\n');
         }
 
         const embed = new EmbedBuilder()
