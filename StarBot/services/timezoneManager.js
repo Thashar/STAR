@@ -85,29 +85,50 @@ class TimezoneManager {
         }
     }
 
-    // Common timezones list
-    getCommonTimezones() {
+    // Positive/UTC timezones (UTC+00:00 and higher)
+    getPositiveTimezones() {
         return [
             { label: 'UTC (UTC+00:00)', value: 'UTC' },
             { label: 'London (UTC+00:00)', value: 'Europe/London' },
             { label: 'Berlin (UTC+01:00)', value: 'Europe/Berlin' },
             { label: 'Warsaw (UTC+01:00)', value: 'Europe/Warsaw' },
             { label: 'Paris (UTC+01:00)', value: 'Europe/Paris' },
+            { label: 'Rome (UTC+01:00)', value: 'Europe/Rome' },
             { label: 'Athens (UTC+02:00)', value: 'Europe/Athens' },
+            { label: 'Helsinki (UTC+02:00)', value: 'Europe/Helsinki' },
+            { label: 'Istanbul (UTC+03:00)', value: 'Europe/Istanbul' },
             { label: 'Moscow (UTC+03:00)', value: 'Europe/Moscow' },
             { label: 'Dubai (UTC+04:00)', value: 'Asia/Dubai' },
             { label: 'Karachi (UTC+05:00)', value: 'Asia/Karachi' },
             { label: 'Dhaka (UTC+06:00)', value: 'Asia/Dhaka' },
             { label: 'Bangkok (UTC+07:00)', value: 'Asia/Bangkok' },
+            { label: 'Hong Kong (UTC+08:00)', value: 'Asia/Hong_Kong' },
             { label: 'Singapore (UTC+08:00)', value: 'Asia/Singapore' },
             { label: 'Tokyo (UTC+09:00)', value: 'Asia/Tokyo' },
+            { label: 'Seoul (UTC+09:00)', value: 'Asia/Seoul' },
             { label: 'Sydney (UTC+10:00)', value: 'Australia/Sydney' },
-            { label: 'Auckland (UTC+12:00)', value: 'Pacific/Auckland' },
-            { label: 'Los Angeles (UTC-08:00)', value: 'America/Los_Angeles' },
-            { label: 'Denver (UTC-07:00)', value: 'America/Denver' },
-            { label: 'Chicago (UTC-06:00)', value: 'America/Chicago' },
+            { label: 'Melbourne (UTC+10:00)', value: 'Australia/Melbourne' },
+            { label: 'Auckland (UTC+12:00)', value: 'Pacific/Auckland' }
+        ];
+    }
+
+    // Negative timezones (UTC-01:00 and lower)
+    getNegativeTimezones() {
+        return [
+            { label: 'Azores (UTC-01:00)', value: 'Atlantic/Azores' },
+            { label: 'São Paulo (UTC-03:00)', value: 'America/Sao_Paulo' },
+            { label: 'Buenos Aires (UTC-03:00)', value: 'America/Argentina/Buenos_Aires' },
+            { label: 'Santiago (UTC-04:00)', value: 'America/Santiago' },
             { label: 'New York (UTC-05:00)', value: 'America/New_York' },
-            { label: 'São Paulo (UTC-03:00)', value: 'America/Sao_Paulo' }
+            { label: 'Toronto (UTC-05:00)', value: 'America/Toronto' },
+            { label: 'Chicago (UTC-06:00)', value: 'America/Chicago' },
+            { label: 'Mexico City (UTC-06:00)', value: 'America/Mexico_City' },
+            { label: 'Denver (UTC-07:00)', value: 'America/Denver' },
+            { label: 'Phoenix (UTC-07:00)', value: 'America/Phoenix' },
+            { label: 'Los Angeles (UTC-08:00)', value: 'America/Los_Angeles' },
+            { label: 'Vancouver (UTC-08:00)', value: 'America/Vancouver' },
+            { label: 'Anchorage (UTC-09:00)', value: 'America/Anchorage' },
+            { label: 'Honolulu (UTC-10:00)', value: 'Pacific/Honolulu' }
         ];
     }
 }

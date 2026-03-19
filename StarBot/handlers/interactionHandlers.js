@@ -237,12 +237,42 @@ async function handleSetTimezoneCommand(interaction, sharedState) {
     const currentTimezone = timezoneManager.getGlobalTimezone();
     const currentTime = timezoneManager.getCurrentTime();
 
-    const timezones = timezoneManager.getCommonTimezones();
+    // Create buttons for timezone categories
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('timezone_category_positive')
+                .setLabel('UTC+ Timezones')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🌍'),
+            new ButtonBuilder()
+                .setCustomId('timezone_category_negative')
+                .setLabel('UTC- Timezones')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🌎')
+        );
 
-    // Create select menu with timezones
+    await interaction.reply({
+        content: `🕐 **Bot timezone:** ${currentTimezone}\n⏰ **Current time:** ${currentTime}\n\nSelect timezone category:`,
+        components: [row],
+        ephemeral: true
+    });
+}
+
+async function handleTimezoneCategorySelect(interaction, sharedState, category) {
+    const { timezoneManager } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const currentTimezone = timezoneManager.getGlobalTimezone();
+    const timezones = category === 'positive'
+        ? timezoneManager.getPositiveTimezones()
+        : timezoneManager.getNegativeTimezones();
+
+    // Create select menu with timezones from selected category
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('set_timezone_select')
-        .setPlaceholder('Select bot timezone')
+        .setPlaceholder(`Select timezone (${category === 'positive' ? 'UTC+' : 'UTC-'})`)
         .addOptions(timezones.map(tz => ({
             label: tz.label,
             value: tz.value,
@@ -251,10 +281,19 @@ async function handleSetTimezoneCommand(interaction, sharedState) {
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    await interaction.reply({
-        content: `🕐 **Bot timezone:** ${currentTimezone}\n⏰ **Current time:** ${currentTime}\n\nSelect timezone from the list below:`,
-        components: [row],
-        ephemeral: true
+    // Add back button
+    const backButton = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('timezone_back')
+                .setLabel('Back')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('◀️')
+        );
+
+    await interaction.editReply({
+        content: `🌐 **${category === 'positive' ? 'UTC+' : 'UTC-'} Timezones**\nSelect timezone:`,
+        components: [row, backButton]
     });
 }
 
@@ -283,6 +322,22 @@ async function handleButton(interaction, sharedState) {
     }
 
     if (customId === 'board_set_timezone') {
+        await handleSetTimezoneCommand(interaction, sharedState);
+        return;
+    }
+
+    // Timezone category selection
+    if (customId === 'timezone_category_positive') {
+        await handleTimezoneCategorySelect(interaction, sharedState, 'positive');
+        return;
+    }
+
+    if (customId === 'timezone_category_negative') {
+        await handleTimezoneCategorySelect(interaction, sharedState, 'negative');
+        return;
+    }
+
+    if (customId === 'timezone_back') {
         await handleSetTimezoneCommand(interaction, sharedState);
         return;
     }
