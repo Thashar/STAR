@@ -742,12 +742,15 @@ async function handleChannelSelectMenu(interaction, sharedState) {
     }
 
     if (customId === 'event_list_channel_select') {
-        const { eventListManager, logger } = sharedState;
+        const { eventListManager, boardManager, logger } = sharedState;
 
         const selectedChannel = interaction.channels.first();
 
         try {
             await eventListManager.setListChannel(selectedChannel.id);
+
+            // Update control panel to show new channel
+            await boardManager.ensureControlPanel();
 
             await interaction.update({
                 content: `✅ **Events list channel set!**\n📍 **Channel:** <#${selectedChannel.id}>\n\nThe events list will be displayed there.`,

@@ -39,10 +39,30 @@ class EventListManager {
                 throw new Error('Channel not found');
             }
 
+            // Get old channel and message IDs before switching
+            const oldChannelId = this.eventManager.getListChannelId();
+            const oldMessageId = this.eventManager.getListMessageId();
+
+            // Delete old embed from previous channel if exists
+            if (oldChannelId && oldMessageId && oldChannelId !== channelId) {
+                try {
+                    const oldChannel = await this.client.channels.fetch(oldChannelId);
+                    if (oldChannel) {
+                        const oldMessage = await oldChannel.messages.fetch(oldMessageId);
+                        await oldMessage.delete();
+                        this.logger.info(`Deleted old events list embed from channel: ${oldChannel.name}`);
+                    }
+                } catch (error) {
+                    this.logger.warn(`Could not delete old events list embed: ${error.message}`);
+                    // Continue anyway - not critical
+                }
+            }
+
+            // Set new channel
             this.listChannel = channel;
             await this.eventManager.setListChannel(channelId);
 
-            // Create new list
+            // Create new list on new channel
             await this.ensureEventsList();
 
             this.logger.success(`Events list channel set to: ${channel.name}`);
