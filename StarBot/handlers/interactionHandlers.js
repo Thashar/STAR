@@ -50,36 +50,13 @@ async function handleInteraction(interaction, sharedState) {
 }
 
 // ==================== SLASH COMMANDS ====================
+// No slash commands - use control panel buttons only
 
 async function handleSlashCommand(interaction, sharedState) {
-    const { logger } = sharedState;
-
-    const commandName = interaction.commandName;
-    logger.info(`Command: /${commandName} by ${interaction.user.tag}`);
-
-    switch (commandName) {
-        case 'new-reminder':
-            await handleNewReminderCommand(interaction, sharedState);
-            break;
-
-        case 'set-reminder':
-            await handleSetReminderCommand(interaction, sharedState);
-            break;
-
-        case 'edit-reminder':
-            await handleEditReminderCommand(interaction, sharedState);
-            break;
-
-        case 'set-time-zone':
-            await handleSetTimezoneCommand(interaction, sharedState);
-            break;
-
-        default:
-            await interaction.reply({
-                content: '❌ Nieznana komenda.',
-                ephemeral: true
-            });
-    }
+    await interaction.reply({
+        content: '❌ Slash commands are disabled. Please use the control panel buttons on the notifications board.',
+        ephemeral: true
+    });
 }
 
 // ==================== /NEW-REMINDER ====================
