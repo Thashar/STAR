@@ -129,20 +129,28 @@ class NotificationManager {
     async createScheduled(creatorId, templateId, firstTrigger, interval, channelId, roles = []) {
         const id = this.generateId();
 
-        // Validate interval
-        if (!this.validateInterval(interval)) {
-            throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee"');
-        }
+        let intervalMs = null;
 
-        // Parse interval to milliseconds
-        const intervalMs = this.parseInterval(interval);
-
-        // Check max interval (skip for "ee" pattern)
-        if (interval !== 'ee') {
-            const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
-            if (intervalMs > maxInterval) {
-                throw new Error('Interval cannot exceed 28 days');
+        // If interval provided, validate it
+        if (interval && interval.trim() !== '') {
+            // Validate interval
+            if (!this.validateInterval(interval)) {
+                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee". Leave empty for one-time reminder.');
             }
+
+            // Parse interval to milliseconds
+            intervalMs = this.parseInterval(interval);
+
+            // Check max interval (skip for "ee" pattern)
+            if (interval !== 'ee') {
+                const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
+                if (intervalMs > maxInterval) {
+                    throw new Error('Interval cannot exceed 28 days');
+                }
+            }
+        } else {
+            // No interval - one-time reminder
+            interval = null;
         }
 
         const scheduled = {
@@ -151,25 +159,31 @@ class NotificationManager {
             creator: creatorId,
             createdAt: new Date().toISOString(),
             firstTrigger: new Date(firstTrigger).toISOString(),
-            interval,
-            intervalMs,
+            interval, // null for one-time
+            intervalMs, // null for one-time
             nextTrigger: new Date(firstTrigger).toISOString(),
             channelId,
             roles,
             status: 'active',
             boardMessageId: null,
-            triggerCount: 0 // For "ee" pattern tracking
+            triggerCount: 0, // For "ee" pattern tracking
+            isOneTime: interval === null // Flag for one-time reminder
         };
 
         this.data.scheduled.push(scheduled);
         await this.saveData();
 
-        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId})`);
+        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId}, ${interval ? 'recurring' : 'one-time'})`);
         return scheduled;
     }
 
     // Validate interval format (1s, 1m, 1h, 1d, or "ee" for special pattern)
+    // Returns true if interval is empty (one-time) or valid
     validateInterval(interval) {
+        // Empty interval = one-time reminder
+        if (!interval || interval.trim() === '') {
+            return true;
+        }
         return /^\d+[smhd]$/.test(interval) || interval === 'ee';
     }
 
@@ -199,6 +213,11 @@ class NotificationManager {
 
     // Format interval for display
     formatInterval(interval) {
+        // One-time reminder
+        if (!interval || interval === null) {
+            return 'One-time';
+        }
+
         // Special "ee" pattern
         if (interval === 'ee') {
             return 'EE Pattern (3d x8, then 4d, repeat)';
@@ -287,6 +306,15 @@ class NotificationManager {
     async updateNextTrigger(id) {
         const scheduled = this.getScheduled(id);
         if (!scheduled) return false;
+
+        // If this is a one-time reminder, mark as completed
+        if (!scheduled.interval || scheduled.interval === null || scheduled.isOneTime) {
+            this.logger.info(`One-time reminder ${id} executed - marking as completed`);
+            return await this.updateScheduled(id, {
+                status: 'completed',
+                triggerCount: 1
+            });
+        }
 
         const lastTrigger = new Date(scheduled.nextTrigger);
         let nextIntervalMs;

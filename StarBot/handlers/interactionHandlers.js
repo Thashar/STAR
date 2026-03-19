@@ -630,9 +630,9 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('1d (max 28d) or "ee"')
+        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 28d), ee')
         .setRequired(true)
         .setMaxLength(10);
 
@@ -904,21 +904,24 @@ async function handleModalSubmit(interaction, sharedState) {
                 return;
             }
 
-            // Validate interval
+            // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d)'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder.'
                 });
                 return;
             }
 
-            const intervalMs = notificationManager.parseInterval(interval);
-            const maxInterval = 28 * 24 * 60 * 60 * 1000;
-            if (intervalMs > maxInterval) {
-                await interaction.editReply({
-                    content: '❌ Interval cannot exceed 28 days.'
-                });
-                return;
+            // If interval provided, check limit
+            if (interval && interval.trim() !== '') {
+                const intervalMs = notificationManager.parseInterval(interval);
+                const maxInterval = 28 * 24 * 60 * 60 * 1000;
+                if (intervalMs && intervalMs > maxInterval) {
+                    await interaction.editReply({
+                        content: '❌ Interval cannot exceed 28 days.'
+                    });
+                    return;
+                }
             }
 
             // Store in user state for channel/role selection
@@ -1025,21 +1028,24 @@ async function handleModalSubmit(interaction, sharedState) {
                 return;
             }
 
-            // Validate interval
+            // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d)'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder.'
                 });
                 return;
             }
 
-            const intervalMs = notificationManager.parseInterval(interval);
-            const maxInterval = 28 * 24 * 60 * 60 * 1000;
-            if (intervalMs > maxInterval) {
-                await interaction.editReply({
-                    content: '❌ Interval cannot exceed 28 days.'
-                });
-                return;
+            // If interval provided, check limit
+            if (interval && interval.trim() !== '') {
+                const intervalMs = notificationManager.parseInterval(interval);
+                const maxInterval = 28 * 24 * 60 * 60 * 1000;
+                if (intervalMs && intervalMs > maxInterval) {
+                    await interaction.editReply({
+                        content: '❌ Interval cannot exceed 28 days.'
+                    });
+                    return;
+                }
             }
 
             await notificationManager.updateScheduled(scheduledId, {
@@ -1088,7 +1094,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval
             if (!eventManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder. or "ee"'
                 });
                 return;
             }
@@ -1144,7 +1150,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval
             if (!eventManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder. or "ee"'
                 });
                 return;
             }
@@ -1830,7 +1836,7 @@ async function handleEditScheduledEdit(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)
@@ -2055,7 +2061,7 @@ async function handleBoardScheduledEdit(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)
@@ -2171,7 +2177,7 @@ async function handleEditEventSelect(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
         .setValue(event.interval)
         .setRequired(true)
@@ -2234,9 +2240,9 @@ async function handleAddEvent(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('1d (max 28d) or "ee"')
+        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 28d), ee')
         .setRequired(true)
         .setMaxLength(10);
 

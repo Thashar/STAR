@@ -64,20 +64,28 @@ class EventManager {
     async createEvent(creatorId, name, firstTrigger, interval) {
         const id = this.generateId();
 
-        // Validate interval
-        if (!this.validateInterval(interval)) {
-            throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee"');
-        }
+        let intervalMs = null;
 
-        // Parse interval to milliseconds
-        const intervalMs = this.parseInterval(interval);
-
-        // Check max interval (skip for "ee" pattern)
-        if (interval !== 'ee') {
-            const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
-            if (intervalMs > maxInterval) {
-                throw new Error('Interval cannot exceed 28 days');
+        // If interval provided, validate it
+        if (interval && interval.trim() !== '') {
+            // Validate interval
+            if (!this.validateInterval(interval)) {
+                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee". Leave empty for one-time event.');
             }
+
+            // Parse interval to milliseconds
+            intervalMs = this.parseInterval(interval);
+
+            // Check max interval (skip for "ee" pattern)
+            if (interval !== 'ee') {
+                const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
+                if (intervalMs > maxInterval) {
+                    throw new Error('Interval cannot exceed 28 days');
+                }
+            }
+        } else {
+            // No interval - one-time event
+            interval = null;
         }
 
         const event = {
@@ -86,21 +94,27 @@ class EventManager {
             creator: creatorId,
             createdAt: new Date().toISOString(),
             firstTrigger: new Date(firstTrigger).toISOString(),
-            interval,
-            intervalMs,
+            interval, // null for one-time
+            intervalMs, // null for one-time
             nextTrigger: new Date(firstTrigger).toISOString(),
-            triggerCount: 0 // For "ee" pattern tracking
+            triggerCount: 0, // For "ee" pattern tracking
+            isOneTime: interval === null // Flag for one-time event
         };
 
         this.data.events.push(event);
         await this.saveData();
 
-        this.logger.info(`Created event: ${event.id}`);
+        this.logger.info(`Created event: ${event.id} (${interval ? 'recurring' : 'one-time'})`);
         return event;
     }
 
     // Validate interval format
+    // Returns true if interval is empty (one-time) or valid
     validateInterval(interval) {
+        // Empty interval = one-time event
+        if (!interval || interval.trim() === '') {
+            return true;
+        }
         return /^\d+[smhd]$/.test(interval) || interval === 'ee';
     }
 
@@ -129,6 +143,11 @@ class EventManager {
 
     // Format interval for display
     formatInterval(interval) {
+        // One-time event
+        if (!interval || interval === null) {
+            return 'One-time';
+        }
+
         if (interval === 'ee') {
             return 'EE Pattern (3d x8, then 4d, repeat)';
         }
@@ -191,6 +210,12 @@ class EventManager {
     async updateNextTrigger(id) {
         const event = this.getEvent(id);
         if (!event) return false;
+
+        // If this is a one-time event, delete it
+        if (!event.interval || event.interval === null || event.isOneTime) {
+            this.logger.info(`One-time event ${id} executed - removing from list`);
+            return await this.deleteEvent(id);
+        }
 
         const lastTrigger = new Date(event.nextTrigger);
         let nextIntervalMs;

@@ -46,14 +46,22 @@ class Scheduler {
             if (now >= nextTriggerTime) {
                 await this.triggerScheduled(sch);
 
-                // Update next trigger
+                // Check if this is a one-time reminder
+                const isOneTime = !sch.interval || sch.interval === null || sch.isOneTime;
+
+                // Update next trigger (for one-time will set status 'completed')
                 await this.notificationManager.updateNextTrigger(sch.id);
 
-                // Update board embed
-                const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
-                await this.boardManager.updateEmbed(updatedScheduled);
-
-                this.logger.info(`Triggered scheduled reminder: ${sch.id}`);
+                if (isOneTime) {
+                    // One-time - delete embed from board
+                    await this.boardManager.deleteEmbed(sch);
+                    this.logger.info(`Triggered one-time reminder: ${sch.id} - removed from board`);
+                } else {
+                    // Recurring - update board embed
+                    const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
+                    await this.boardManager.updateEmbed(updatedScheduled);
+                    this.logger.info(`Triggered recurring reminder: ${sch.id}`);
+                }
             }
         }
     }
