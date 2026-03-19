@@ -711,7 +711,7 @@ async function handleChannelSelectMenu(interaction, sharedState) {
         const row2 = new ActionRowBuilder().addComponents(skipButton);
 
         await interaction.update({
-            content: `**Krok 3/3:** Select roles to ping (optional)\n📍 Kanał: <#${selectedChannel.id}>`,
+            content: `**Step 3/3:** Select roles to ping (optional)\n📍 **Channel:** <#${selectedChannel.id}>`,
             components: [row1, row2]
         });
     }
@@ -877,7 +877,7 @@ async function handleModalSubmit(interaction, sharedState) {
             const row = new ActionRowBuilder().addComponents(channelSelect);
 
             await interaction.editReply({
-                content: '**Krok 2/3:** Select the channel where notifications will be sent',
+                content: '**Step 2/3:** Select the channel where notifications will be sent',
                 components: [row]
             });
         }
@@ -974,7 +974,7 @@ async function handleModalSubmit(interaction, sharedState) {
             await boardManager.updateEmbed(updated);
 
             await interaction.editReply({
-                content: `✅ Zaplanowane przypomnienie **${scheduledId}** zostało zaktualizowane!`,
+                content: `✅ Scheduled reminder **${scheduledId}** has been updated!`,
                 components: []
             });
 
@@ -1086,16 +1086,16 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
     const nextTriggerDate = new Date(scheduled.nextTrigger);
     const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
 
-    let content = '**Zaplanowane przypomnienie:**\n\n';
+    let content = '**Scheduled Reminder:**\n\n';
     content += `⏰ **ID:** ${scheduled.id}\n`;
     content += `📝 **Template:** ${template.name}\n`;
-    content += `📅 **Pierwszy trigger:** ${new Date(scheduled.firstTrigger).toLocaleString('pl-PL')}\n`;
-    content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
-    content += `⏭️ **Następny trigger:** <t:${nextTriggerTimestamp}:F> (<t:${nextTriggerTimestamp}:R>)\n`;
-    content += `📍 **Kanał:** <#${scheduled.channelId}>\n`;
-    content += `👥 **Role:** ${scheduled.roles.length > 0 ? scheduled.roles.map(r => `<@&${r}>`).join(', ') : 'Brak'}\n`;
-    content += `📊 **Status:** ${scheduled.status === 'active' ? '🟢 Aktywne' : '⏸️ Wstrzymane'}\n\n`;
-    content += '**Podgląd wiadomości:**';
+    content += `📅 **First trigger:** ${new Date(scheduled.firstTrigger).toLocaleString('en-US')}\n`;
+    content += `🔄 **Interval:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+    content += `⏭️ **Next trigger:** <t:${nextTriggerTimestamp}:F> (<t:${nextTriggerTimestamp}:R>)\n`;
+    content += `📍 **Channel:** <#${scheduled.channelId}>\n`;
+    content += `👥 **Roles:** ${scheduled.roles.length > 0 ? scheduled.roles.map(r => `<@&${r}>`).join(', ') : 'None'}\n`;
+    content += `📊 **Status:** ${scheduled.status === 'active' ? '🟢 Active' : '⏸️ Paused'}\n\n`;
+    content += '**Message preview:**';
 
     const embeds = [];
     if (template.type === 'text') {
@@ -1148,7 +1148,9 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
 
         // Get scheduled with template for board embed
         const scheduledWithTemplate = notificationManager.getScheduledWithTemplate(scheduled.id);
-        await boardManager.createEmbed(scheduledWithTemplate);
+        logger.info(`Creating board embed for ${scheduled.id} - has template: ${!!scheduledWithTemplate?.template}`);
+        const embedResult = await boardManager.createEmbed(scheduledWithTemplate);
+        logger.info(`Board embed creation result: ${embedResult ? 'success' : 'failed'}`);
 
         userStates.delete(interaction.user.id);
 
@@ -1156,13 +1158,13 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
         const nextTriggerDate = new Date(scheduled.nextTrigger);
         const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
 
-        let content = '✅ **Zaplanowane przypomnienie utworzone!**\n\n';
+        let content = '✅ **Scheduled reminder created!**\n\n';
         content += `⏰ **ID:** ${scheduled.id}\n`;
         content += `📝 **Template:** ${template.name}\n`;
-        content += `📅 **Pierwszy trigger:** <t:${nextTriggerTimestamp}:F>\n`;
-        content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
-        content += `📍 **Kanał:** <#${userState.channelId}>\n`;
-        content += `👥 **Role:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'Brak'}`;
+        content += `📅 **First trigger:** <t:${nextTriggerTimestamp}:F>\n`;
+        content += `🔄 **Interval:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+        content += `📍 **Channel:** <#${userState.channelId}>\n`;
+        content += `👥 **Roles:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'None'}`;
 
         await interaction.editReply({
             content,
@@ -1712,7 +1714,7 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
         await notificationManager.deleteScheduled(scheduledId);
 
         await interaction.editReply({
-            content: `✅ Zaplanowane przypomnienie **${scheduledId}** has been deleted.`,
+            content: `✅ Scheduled reminder **${scheduledId}** has been deleted.`,
             embeds: [],
             components: []
         });
@@ -1752,7 +1754,7 @@ async function handleBoardScheduledPause(interaction, sharedState) {
         await boardManager.updateEmbed(updated);
 
         await interaction.followUp({
-            content: `⏸️ Zaplanowane przypomnienie **${scheduledId}** has been paused.`,
+            content: `⏸️ Scheduled reminder **${scheduledId}** has been paused.`,
             ephemeral: true
         });
 
@@ -1780,7 +1782,7 @@ async function handleBoardScheduledResume(interaction, sharedState) {
         await boardManager.updateEmbed(updated);
 
         await interaction.followUp({
-            content: `▶️ Zaplanowane przypomnienie **${scheduledId}** has been resumed.`,
+            content: `▶️ Scheduled reminder **${scheduledId}** has been resumed.`,
             ephemeral: true
         });
 

@@ -87,10 +87,17 @@ class BoardManager {
             return null;
         }
 
-        if (!scheduled || !scheduled.template) {
-            this.logger.error('Invalid scheduled object or missing template');
+        if (!scheduled) {
+            this.logger.error('createEmbed: scheduled is null or undefined');
             return null;
         }
+
+        if (!scheduled.template) {
+            this.logger.error(`createEmbed: scheduled ${scheduled.id} has no template attached`);
+            return null;
+        }
+
+        this.logger.info(`Creating embed for scheduled ${scheduled.id} with template ${scheduled.template.name}`);
 
         try {
             const embed = this.buildEmbed(scheduled);
