@@ -47,9 +47,13 @@ const client = new Client({
 console.log('[DEBUG] Discord client created');
 
 // Initialize services
+console.log('[DEBUG] Creating service instances...');
 const notificationManager = new NotificationManager(config, logger);
+console.log('[DEBUG] NotificationManager instance created');
 const boardManager = new BoardManager(client, config, logger, notificationManager);
+console.log('[DEBUG] BoardManager instance created');
 const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
+console.log('[DEBUG] Scheduler instance created');
 
 // User states for multi-step interactions
 const userStates = new Map();
@@ -64,6 +68,7 @@ const sharedState = {
     scheduler,
     userStates
 };
+console.log('[DEBUG] Shared state created');
 
 // Register slash commands
 async function registerCommands() {
@@ -110,6 +115,7 @@ client.once('ready', async () => {
 });
 
 // Event: Interactions (slash commands, buttons, select menus)
+console.log('[DEBUG] Setting up event handlers...');
 client.on('interactionCreate', async interaction => {
     await handleInteraction(interaction, sharedState);
 });
@@ -118,6 +124,7 @@ client.on('interactionCreate', async interaction => {
 client.on('error', error => {
     logger.error('Discord Client Error:', error);
 });
+console.log('[DEBUG] Event handlers set up');
 
 // Graceful shutdown
 async function shutdown() {
@@ -138,7 +145,10 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 // Login
+console.log('[DEBUG] Attempting to login...');
 client.login(config.token).catch(error => {
+    console.log('[ERROR] Login failed:', error.message);
     logger.error('Login error:', error);
     process.exit(1);
 });
+console.log('[DEBUG] Login call made (waiting for connection...)');
