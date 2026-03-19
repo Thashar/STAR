@@ -605,9 +605,9 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('1d (max 28d)')
+        .setPlaceholder('1d (max 28d) or "ee"')
         .setRequired(true)
         .setMaxLength(10);
 
@@ -1632,7 +1632,7 @@ async function handleEditScheduledEdit(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)
@@ -1824,7 +1824,7 @@ async function handleBoardScheduledEdit(interaction, sharedState) {
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)

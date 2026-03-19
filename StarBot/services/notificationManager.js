@@ -131,14 +131,18 @@ class NotificationManager {
 
         // Validate interval
         if (!this.validateInterval(interval)) {
-            throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d)');
+            throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee"');
         }
 
         // Parse interval to milliseconds
         const intervalMs = this.parseInterval(interval);
-        const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
-        if (intervalMs > maxInterval) {
-            throw new Error('Interval cannot exceed 28 days');
+
+        // Check max interval (skip for "ee" pattern)
+        if (interval !== 'ee') {
+            const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
+            if (intervalMs > maxInterval) {
+                throw new Error('Interval cannot exceed 28 days');
+            }
         }
 
         const scheduled = {
@@ -153,7 +157,8 @@ class NotificationManager {
             channelId,
             roles,
             status: 'active',
-            boardMessageId: null
+            boardMessageId: null,
+            triggerCount: 0 // For "ee" pattern tracking
         };
 
         this.data.scheduled.push(scheduled);
@@ -163,13 +168,18 @@ class NotificationManager {
         return scheduled;
     }
 
-    // Validate interval format (1s, 1m, 1h, 1d)
+    // Validate interval format (1s, 1m, 1h, 1d, or "ee" for special pattern)
     validateInterval(interval) {
-        return /^\d+[smhd]$/.test(interval);
+        return /^\d+[smhd]$/.test(interval) || interval === 'ee';
     }
 
     // Parse interval to milliseconds
     parseInterval(interval) {
+        // Special "ee" pattern - dynamic interval (3d x8, then 4d, repeat)
+        if (interval === 'ee') {
+            return null; // Dynamic, calculated per trigger
+        }
+
         const match = interval.match(/^(\d+)([smhd])$/);
         if (!match) {
             throw new Error('Invalid interval format');
@@ -187,8 +197,13 @@ class NotificationManager {
         }
     }
 
-    // Format interval for display (e.g., "1d" -> "1 dzień", "5h" -> "5 godzin")
+    // Format interval for display
     formatInterval(interval) {
+        // Special "ee" pattern
+        if (interval === 'ee') {
+            return 'EE Pattern (3d x8, then 4d, repeat)';
+        }
+
         const match = interval.match(/^(\d+)([smhd])$/);
         if (!match) return interval;
 
@@ -274,9 +289,29 @@ class NotificationManager {
         if (!scheduled) return false;
 
         const lastTrigger = new Date(scheduled.nextTrigger);
-        const nextTrigger = new Date(lastTrigger.getTime() + scheduled.intervalMs).toISOString();
+        let nextIntervalMs;
+        let newTriggerCount = (scheduled.triggerCount || 0) + 1;
 
-        return await this.updateScheduled(id, { nextTrigger });
+        // Special "ee" pattern: 3d x8, then 4d, repeat
+        if (scheduled.interval === 'ee') {
+            const cyclePosition = (scheduled.triggerCount || 0) % 9;
+            // Positions 0-7 (first 8 triggers): 3 days
+            // Position 8 (9th trigger): 4 days
+            if (cyclePosition === 8) {
+                nextIntervalMs = 4 * 24 * 60 * 60 * 1000; // 4 days
+            } else {
+                nextIntervalMs = 3 * 24 * 60 * 60 * 1000; // 3 days
+            }
+        } else {
+            nextIntervalMs = scheduled.intervalMs;
+        }
+
+        const nextTrigger = new Date(lastTrigger.getTime() + nextIntervalMs).toISOString();
+
+        return await this.updateScheduled(id, {
+            nextTrigger,
+            triggerCount: newTriggerCount
+        });
     }
 
     // Update board message ID
