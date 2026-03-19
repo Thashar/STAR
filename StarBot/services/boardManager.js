@@ -31,6 +31,12 @@ class BoardManager {
             this.boardChannel = channel;
             this.logger.success('BoardManager initialized');
 
+            // Load control panel message ID from persistent storage
+            this.controlPanelMessageId = this.eventManager.getControlPanelMessageId();
+            if (this.controlPanelMessageId) {
+                this.logger.info(`Loaded control panel message ID: ${this.controlPanelMessageId}`);
+            }
+
             // Start periodic updates
             this.startPeriodicUpdates();
 
@@ -59,6 +65,12 @@ class BoardManager {
             this.updateInterval = null;
             this.logger.info('Stopped periodic board updates');
         }
+    }
+
+    // Save control panel message ID to persistent storage
+    async saveControlPanelMessageId(messageId) {
+        this.controlPanelMessageId = messageId;
+        await this.eventManager.setControlPanelMessageId(messageId);
     }
 
     // Sync all notifications to board (on startup)
@@ -401,7 +413,7 @@ class BoardManager {
                 try {
                     const controlPanel = await this.buildControlPanel();
                     await existingPanel.edit(controlPanel);
-                    this.controlPanelMessageId = existingPanel.id;
+                    await this.saveControlPanelMessageId(existingPanel.id);
                     this.logger.success('Control panel found and updated');
                     return;
                 } catch (error) {
@@ -420,7 +432,7 @@ class BoardManager {
             // Control panel doesn't exist or old one was deleted - create new one at bottom
             const controlPanel = await this.buildControlPanel();
             const message = await this.boardChannel.send(controlPanel);
-            this.controlPanelMessageId = message.id;
+            await this.saveControlPanelMessageId(message.id);
             this.logger.success('Control panel created at bottom');
 
         } catch (error) {
@@ -445,7 +457,7 @@ class BoardManager {
                 } catch (error) {
                     if (error.code === 10008) {
                         this.logger.warn('Cached control panel message not found, searching channel');
-                        this.controlPanelMessageId = null;
+                        await this.saveControlPanelMessageId(null);
                     } else {
                         throw error;
                     }
@@ -460,7 +472,7 @@ class BoardManager {
                         message.embeds.length > 0 &&
                         message.embeds[0].title === '📋 Reminders Control Panel') {
                         panelMessage = message;
-                        this.controlPanelMessageId = message.id;
+                        await this.saveControlPanelMessageId(message.id);
                         this.logger.info('Found control panel in channel');
                         break;
                     }

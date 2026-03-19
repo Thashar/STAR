@@ -30,6 +30,7 @@ class EventManager {
                     events: [],
                     listChannelId: null,
                     listMessageId: null,
+                    controlPanelMessageId: null,
                     nextId: 1
                 };
                 await this.saveData();
@@ -265,6 +266,17 @@ class EventManager {
     // Get list message ID
     getListMessageId() {
         return this.data.listMessageId;
+    }
+
+    // Set control panel message ID
+    async setControlPanelMessageId(messageId) {
+        this.data.controlPanelMessageId = messageId;
+        await this.saveData();
+    }
+
+    // Get control panel message ID
+    getControlPanelMessageId() {
+        return this.data.controlPanelMessageId;
     }
 }
 
