@@ -295,15 +295,18 @@ class BoardManager {
                 return;
             }
 
-            // If we have stored ID but it's not the last message, it means new notifications were added
-            // In this case, we need to move control panel to bottom
-            if (this.controlPanelMessageId) {
-                try {
-                    const oldPanel = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
-                    await oldPanel.delete();
-                    this.logger.info('Deleted old control panel (not at bottom)');
-                } catch (error) {
-                    // Old panel doesn't exist, that's fine
+            // Delete ALL old control panels (fetch more messages to find all panels)
+            const allMessages = await this.boardChannel.messages.fetch({ limit: 100 });
+            for (const [messageId, message] of allMessages) {
+                if (message.author.id === this.client.user.id &&
+                    message.embeds.length > 0 &&
+                    message.embeds[0].title === '📋 Reminders Control Panel') {
+                    try {
+                        await message.delete();
+                        this.logger.info(`Deleted old control panel: ${messageId}`);
+                    } catch (error) {
+                        this.logger.warn(`Failed to delete old control panel ${messageId}:`, error.message);
+                    }
                 }
             }
 
