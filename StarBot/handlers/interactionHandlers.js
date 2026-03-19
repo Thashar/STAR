@@ -770,7 +770,7 @@ async function handleRoleSelectMenu(interaction, sharedState) {
 // ==================== MODAL SUBMIT HANDLERS ====================
 
 async function handleModalSubmit(interaction, sharedState) {
-    const { notificationManager, logger, userStates } = sharedState;
+    const { notificationManager, boardManager, logger, userStates } = sharedState;
     const customId = interaction.customId;
 
     logger.info(`Modal Submit: ${customId} by ${interaction.user.tag}`);
@@ -914,6 +914,9 @@ async function handleModalSubmit(interaction, sharedState) {
                     content: `✅ Template **${name}** has been updated!`,
                     components: []
                 });
+
+                // Update control panel to show updated template
+                await boardManager.ensureControlPanel();
             } else {
                 const name = interaction.fields.getTextInputValue('name');
                 const embedTitle = interaction.fields.getTextInputValue('embedTitle');
@@ -944,6 +947,9 @@ async function handleModalSubmit(interaction, sharedState) {
                     content: `✅ Template **${name}** has been updated!`,
                     components: []
                 });
+
+                // Update control panel to show updated template
+                await boardManager.ensureControlPanel();
             }
 
             logger.success(`Updated template ${templateId}`);
@@ -1210,7 +1216,7 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
 // ==================== BUTTON ACTION HANDLERS ====================
 
 async function handleTemplatePreviewApprove(interaction, sharedState) {
-    const { notificationManager, userStates, logger } = sharedState;
+    const { notificationManager, boardManager, userStates, logger } = sharedState;
 
     await interaction.deferUpdate();
 
@@ -1256,6 +1262,9 @@ async function handleTemplatePreviewApprove(interaction, sharedState) {
             embeds: [],
             components: []
         });
+
+        // Update control panel to show new template
+        await boardManager.ensureControlPanel();
 
         logger.success(`Created template ${template.id}`);
     } catch (error) {
@@ -1702,7 +1711,7 @@ async function handleEditScheduledDelete(interaction, sharedState) {
 }
 
 async function handleConfirmDeleteTemplate(interaction, sharedState) {
-    const { notificationManager, logger } = sharedState;
+    const { notificationManager, boardManager, logger } = sharedState;
 
     await interaction.deferUpdate();
 
@@ -1716,6 +1725,9 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
             embeds: [],
             components: []
         });
+
+        // Update control panel to remove deleted template
+        await boardManager.ensureControlPanel();
 
         logger.success(`Deleted template ${templateId}`);
     } catch (error) {

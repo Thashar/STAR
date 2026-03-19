@@ -269,8 +269,15 @@ class BoardManager {
             });
         }
 
-        // Creator
-        embed.setFooter({ text: `Created by ${scheduled.creator}` });
+        // Creator - get nickname from guild
+        let creatorName = 'Unknown';
+        if (this.boardChannel && this.boardChannel.guild) {
+            const member = this.boardChannel.guild.members.cache.get(scheduled.creator);
+            if (member) {
+                creatorName = member.displayName;
+            }
+        }
+        embed.setFooter({ text: `Created by ${creatorName}` });
 
         return embed;
     }
@@ -340,6 +347,34 @@ class BoardManager {
         const currentTimezone = this.timezoneManager.getGlobalTimezone();
         const currentTime = this.timezoneManager.getCurrentTime();
 
+        // Get all templates
+        const templates = this.notificationManager.getAllTemplates();
+        let templatesText = '';
+
+        if (templates.length === 0) {
+            templatesText = '_No templates yet. Create one with `/new-reminder`_';
+        } else {
+            templatesText = templates.map(t => {
+                const typeIcon = t.type === 'text' ? '📝' : '📋';
+                const createdDate = new Date(t.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+
+                // Get creator's nickname from guild
+                let creatorName = 'Unknown';
+                if (this.boardChannel && this.boardChannel.guild) {
+                    const member = this.boardChannel.guild.members.cache.get(t.creator);
+                    if (member) {
+                        creatorName = member.displayName;
+                    }
+                }
+
+                return `${typeIcon} **${t.name}** - ${creatorName} - ${createdDate}`;
+            }).join('\n');
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0x5865F2) // Blurple
             .setTitle('📋 Reminders Control Panel')
@@ -353,6 +388,7 @@ class BoardManager {
                 '📋 **Embed** - Message with embedded content\n\n' +
                 `🕐 **Current timezone:** ${currentTimezone}\n` +
                 `⏰ **Current time:** ${currentTime}\n\n` +
+                `**📚 Available Templates (${templates.length}):**\n${templatesText}\n\n` +
                 'All active reminders will appear above this panel.'
             )
             .setFooter({ text: 'STAR Bot reminder system' });
