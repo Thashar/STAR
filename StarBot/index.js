@@ -11,28 +11,40 @@ const commands = require('./commands');
 console.log('[DEBUG] Loaded commands');
 
 // Services
+console.log('[DEBUG] Loading services...');
 const NotificationManager = require('./services/notificationManager');
+console.log('[DEBUG] Loaded NotificationManager');
 const BoardManager = require('./services/boardManager');
+console.log('[DEBUG] Loaded BoardManager');
 const Scheduler = require('./services/scheduler');
+console.log('[DEBUG] Loaded Scheduler');
 
+console.log('[DEBUG] Creating logger...');
 const logger = createBotLogger('StarBot');
+console.log('[DEBUG] Logger created');
 
 // Validate configuration
+console.log('[DEBUG] Validating config...');
 if (!config.token) {
+    console.log('[ERROR] STARBOT_TOKEN is not set in .env file');
     logger.error('STARBOT_TOKEN is not set in .env file');
     process.exit(1);
 }
 
 if (!config.notificationsBoardChannelId) {
+    console.log('[ERROR] STARBOT_NOTIFICATIONS_BOARD_CHANNEL is not set in .env file');
     logger.error('STARBOT_NOTIFICATIONS_BOARD_CHANNEL is not set in .env file');
     process.exit(1);
 }
+console.log('[DEBUG] Config validated');
 
+console.log('[DEBUG] Creating Discord client...');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds
     ]
 });
+console.log('[DEBUG] Discord client created');
 
 // Initialize services
 const notificationManager = new NotificationManager(config, logger);
