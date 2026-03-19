@@ -405,12 +405,19 @@ class BoardManager {
                     this.logger.success('Control panel found and updated');
                     return;
                 } catch (error) {
-                    this.logger.warn('Failed to update existing control panel, creating new one:', error.message);
+                    this.logger.warn('Failed to update existing control panel, will delete and create new one:', error.message);
+                    // Delete old panel before creating new one
+                    try {
+                        await existingPanel.delete();
+                        this.logger.info('Deleted old control panel that failed to update');
+                    } catch (deleteError) {
+                        this.logger.warn('Failed to delete old control panel:', deleteError.message);
+                    }
                     // Fall through to create new panel
                 }
             }
 
-            // Control panel doesn't exist - create new one at bottom
+            // Control panel doesn't exist or old one was deleted - create new one at bottom
             const controlPanel = await this.buildControlPanel();
             const message = await this.boardChannel.send(controlPanel);
             this.controlPanelMessageId = message.id;
