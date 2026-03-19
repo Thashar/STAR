@@ -421,7 +421,7 @@ class BoardManager {
                 `**📚 Available Templates (${templates.length}):**\n${templatesText}\n\n` +
                 'All active reminders will appear above this panel.'
             )
-            .setFooter({ text: 'STAR Bot - Reminders & Events' });
+            .setFooter({ text: 'Reminder System' });
 
         const row1 = new ActionRowBuilder()
             .addComponents(
