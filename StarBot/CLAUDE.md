@@ -13,7 +13,7 @@
 
 StarBot is a comprehensive template-based notification management system for Discord servers. It provides:
 - **Notification templates** - Create reusable Text or Embed templates
-- **Scheduled reminders** - Schedule templates with flexible intervals (1s to 28d)
+- **Scheduled reminders** - Schedule templates with flexible intervals (1s to 28d, or 'ee' pattern)
 - **Live notifications board** - All active scheduled reminders displayed on a dedicated channel
 - **Auto-updating embeds** - Notifications update every minute showing time remaining
 
@@ -105,8 +105,9 @@ Schedule a template to be sent repeatedly.
 1. Select template from list (with pagination if >25 templates)
 2. Fill modal:
    - **First trigger**: `YYYY-MM-DD HH:MM` (e.g., "2026-03-20 10:00")
-   - **Interval**: `1s`, `1m`, `1h`, `1d` (max 28d)
+   - **Interval**: `1s`, `1m`, `1h`, `1d` (max 28d), or `ee` for special pattern
      - Examples: `5m` = every 5 minutes, `1h` = every hour, `1d` = every day
+     - Special: `ee` = EE Pattern (8 triggers every 3 days, then 9th trigger after 4 days, repeating cyclically)
 3. Select channel from dropdown
 4. Select roles to ping (optional, multi-select up to 10)
 5. Preview appears with all data + final message preview
@@ -117,14 +118,23 @@ Schedule a template to be sent repeatedly.
 - Appears on notifications board
 - Triggers automatically at intervals
 
-**Example:**
+**Examples:**
 ```
+Example 1 - Regular interval:
 Template: "Boss Reminder" (Text)
 First trigger: 2026-03-20 10:00
 Interval: 1d (every day)
 Channel: #raids
 Roles: @Raiders
 → Sends notification every day at 10:00
+
+Example 2 - EE Pattern:
+Template: "Special Event" (Embed)
+First trigger: 2026-03-20 18:00
+Interval: ee (EE Pattern)
+Channel: #events
+Roles: @Everyone
+→ Sends 8 times every 3 days, then once after 4 days, repeating cyclically
 ```
 
 ---
@@ -199,7 +209,8 @@ Manage templates and scheduled reminders.
    - Manages scheduled reminders (create, read, update, delete)
    - Stores data in `data/notifications.json`
    - Calculates next trigger times
-   - Validates intervals (max 28 days)
+   - Validates intervals (max 28 days, or 'ee' for special pattern)
+   - Handles dynamic interval calculation for 'ee' pattern (3d x8, then 4d, repeating)
 
 2. **BoardManager** (`services/boardManager.js`)
    - Creates/updates/deletes embeds on notifications board
@@ -254,7 +265,8 @@ Manage templates and scheduled reminders.
       "channelId": "channelId",
       "roles": ["roleId1", "roleId2"],
       "status": "active",
-      "boardMessageId": "messageId"
+      "boardMessageId": "messageId",
+      "triggerCount": 0  // For 'ee' pattern: tracks cycle position (0-8)
     }
   ],
   "nextId": 3
@@ -278,6 +290,14 @@ Manage templates and scheduled reminders.
 5. Sends to configured channel with role pings
 6. Updates next trigger time
 7. BoardManager updates embed
+
+**EE Pattern interval calculation:**
+- For `interval: "ee"`, the next trigger is calculated dynamically based on `triggerCount % 9`:
+  - Positions 0-7 (first 8 triggers): Add 3 days
+  - Position 8 (9th trigger): Add 4 days
+  - Then cycle repeats (position 0 again)
+- `triggerCount` increments after each trigger
+- Example cycle: 3d → 3d → 3d → 3d → 3d → 3d → 3d → 3d → 4d → (repeat)
 
 ---
 
@@ -332,6 +352,45 @@ Manage templates and scheduled reminders.
 → Roles: @Members, @VIP
 → Result: Scheduled sch_2 created
 → Sends every hour starting at 15:00
+```
+
+### Example 3: EE Pattern Reminder
+
+**Step 1: Create Template**
+```
+/new-reminder
+→ Type: Text or Embed
+→ Name: "Special Event"
+→ Content: Your message
+→ Approve
+→ Result: Template tpl_3 created
+```
+
+**Step 2: Schedule It**
+```
+/set-reminder
+→ Select: "Special Event"
+→ First trigger: 2026-03-20 18:00
+→ Interval: ee
+→ Channel: #events
+→ Roles: @Everyone
+→ Result: Scheduled sch_3 created
+→ Sends 8 times every 3 days, then once after 4 days, repeating cyclically
+```
+
+**Trigger timeline:**
+```
+Trigger 1: 2026-03-20 18:00 (Day 0)
+Trigger 2: 2026-03-23 18:00 (Day 3)  - +3d
+Trigger 3: 2026-03-26 18:00 (Day 6)  - +3d
+Trigger 4: 2026-03-29 18:00 (Day 9)  - +3d
+Trigger 5: 2026-04-01 18:00 (Day 12) - +3d
+Trigger 6: 2026-04-04 18:00 (Day 15) - +3d
+Trigger 7: 2026-04-07 18:00 (Day 18) - +3d
+Trigger 8: 2026-04-10 18:00 (Day 21) - +3d
+Trigger 9: 2026-04-14 18:00 (Day 25) - +4d (9th trigger)
+Trigger 10: 2026-04-17 18:00 (Day 28) - +3d (cycle repeats)
+...
 ```
 
 ---
