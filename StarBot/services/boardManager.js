@@ -329,7 +329,8 @@ class BoardManager {
                 '**How to use the reminder system:**\n\n' +
                 '**1️⃣ `/new-reminder`** - Create reminder template (Text or Embed)\n' +
                 '**2️⃣ `/set-reminder`** - Schedule reminder from template\n' +
-                '**3️⃣ `/edit-reminder`** - Edit or delete templates and scheduled reminders\n\n' +
+                '**3️⃣ `/edit-reminder`** - Edit or delete templates and scheduled reminders\n' +
+                '**🕐 `/set-time-zone`** - Set your time zone for accurate scheduling\n\n' +
                 '📝 **Text** - Plain text message\n' +
                 '📋 **Embed** - Message with embedded content\n\n' +
                 'All active reminders will appear above this panel.'
