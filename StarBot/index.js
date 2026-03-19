@@ -146,6 +146,18 @@ process.on('SIGTERM', shutdown);
 
 // Login
 console.log('[DEBUG] Attempting to login...');
+console.log('[DEBUG] Token length:', config.token ? config.token.length : 'undefined');
+console.log('[DEBUG] Token starts with:', config.token ? config.token.substring(0, 20) + '...' : 'undefined');
+
+// Set timeout to detect if login hangs
+setTimeout(() => {
+    console.log('[WARNING] Login timeout - no response after 30 seconds');
+    console.log('[WARNING] This usually means:');
+    console.log('[WARNING] 1. Invalid bot token');
+    console.log('[WARNING] 2. Network issues (firewall blocking Discord API)');
+    console.log('[WARNING] 3. Bot deleted from Discord Developer Portal');
+}, 30000);
+
 client.login(config.token).catch(error => {
     console.log('[ERROR] Login failed:', error.message);
     logger.error('Login error:', error);
