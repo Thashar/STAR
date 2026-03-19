@@ -84,9 +84,10 @@ class Scheduler {
             if (template.type === 'text') {
                 content += template.text;
             } else if (template.type === 'embed') {
+                const colorHex = parseInt(template.embedColor || '5865F2', 16);
                 const embed = new EmbedBuilder()
                     .setDescription(template.embedDescription)
-                    .setColor(0x5865F2)
+                    .setColor(colorHex)
                     .setTimestamp();
 
                 if (template.embedTitle) {
@@ -95,10 +96,6 @@ class Scheduler {
 
                 if (template.embedIcon) {
                     embed.setThumbnail(template.embedIcon);
-                }
-
-                if (template.embedImage) {
-                    embed.setImage(template.embedImage);
                 }
 
                 embeds.push(embed);

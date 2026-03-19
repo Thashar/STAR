@@ -178,8 +178,15 @@ class BoardManager {
     // Build embed for scheduled reminder
     buildEmbed(scheduled) {
         const template = scheduled.template;
+
+        // Use template color if available (for embed type), otherwise default
+        let color = 0x5865F2; // Default Blurple
+        if (template.type === 'embed' && template.embedColor) {
+            color = parseInt(template.embedColor, 16);
+        }
+
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2)
+            .setColor(color)
             .setTimestamp(new Date(scheduled.createdAt));
 
         // Title
