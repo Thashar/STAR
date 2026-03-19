@@ -759,15 +759,23 @@ async function handleChannelSelectMenu(interaction, sharedState) {
         const selectedChannel = interaction.channels.first();
 
         try {
-            await eventListManager.setListChannel(selectedChannel.id);
+            const result = await eventListManager.setListChannel(selectedChannel.id);
 
             // Update control panel to show new channel
             await boardManager.ensureControlPanel();
 
-            await interaction.update({
-                content: `✅ **Events list channel set!**\n📍 **Channel:** <#${selectedChannel.id}>\n\nThe events list will be displayed there.`,
-                components: []
-            });
+            // Different message depending on whether it's the same channel
+            if (result.sameChannel) {
+                await interaction.update({
+                    content: `ℹ️ **Events list is already on this channel!**\n📍 **Channel:** <#${selectedChannel.id}>`,
+                    components: []
+                });
+            } else {
+                await interaction.update({
+                    content: `✅ **Events list channel set!**\n📍 **Channel:** <#${selectedChannel.id}>\n\nThe events list will be displayed there.`,
+                    components: []
+                });
+            }
 
             logger.success(`Events list channel set to: ${selectedChannel.name}`);
         } catch (error) {

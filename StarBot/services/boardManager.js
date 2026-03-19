@@ -367,38 +367,50 @@ class BoardManager {
         }
 
         try {
-            // Fetch last message in channel to check if control panel already exists
-            const messages = await this.boardChannel.messages.fetch({ limit: 1 });
-            const lastMessage = messages.first();
-
-            // Check if last message is control panel from this bot
-            if (lastMessage &&
-                lastMessage.author.id === this.client.user.id &&
-                lastMessage.embeds.length > 0 &&
-                lastMessage.embeds[0].title === '📋 Reminders Control Panel') {
-
-                // Control panel already exists at bottom - just update it
-                this.controlPanelMessageId = lastMessage.id;
-                this.logger.info('Control panel already exists at bottom - no action needed');
-                return;
-            }
-
-            // Delete ALL old control panels (fetch more messages to find all panels)
+            // Fetch messages to find existing control panel anywhere in channel
             const allMessages = await this.boardChannel.messages.fetch({ limit: 100 });
+            let existingPanel = null;
+            let duplicatePanels = [];
+
+            // Find all control panels
             for (const [messageId, message] of allMessages) {
                 if (message.author.id === this.client.user.id &&
                     message.embeds.length > 0 &&
                     message.embeds[0].title === '📋 Reminders Control Panel') {
-                    try {
-                        await message.delete();
-                        this.logger.info(`Deleted old control panel: ${messageId}`);
-                    } catch (error) {
-                        this.logger.warn(`Failed to delete old control panel ${messageId}:`, error.message);
+
+                    if (!existingPanel) {
+                        existingPanel = message;
+                    } else {
+                        duplicatePanels.push(message);
                     }
                 }
             }
 
-            // Create new control panel at bottom
+            // Delete duplicate panels (keep first one found)
+            for (const duplicate of duplicatePanels) {
+                try {
+                    await duplicate.delete();
+                    this.logger.info(`Deleted duplicate control panel: ${duplicate.id}`);
+                } catch (error) {
+                    this.logger.warn(`Failed to delete duplicate control panel:`, error.message);
+                }
+            }
+
+            // If control panel exists - update it
+            if (existingPanel) {
+                try {
+                    const controlPanel = await this.buildControlPanel();
+                    await existingPanel.edit(controlPanel);
+                    this.controlPanelMessageId = existingPanel.id;
+                    this.logger.success('Control panel found and updated');
+                    return;
+                } catch (error) {
+                    this.logger.warn('Failed to update existing control panel, creating new one:', error.message);
+                    // Fall through to create new panel
+                }
+            }
+
+            // Control panel doesn't exist - create new one at bottom
             const controlPanel = await this.buildControlPanel();
             const message = await this.boardChannel.send(controlPanel);
             this.controlPanelMessageId = message.id;

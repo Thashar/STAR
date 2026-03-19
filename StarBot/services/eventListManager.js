@@ -43,6 +43,16 @@ class EventListManager {
             const oldChannelId = this.eventManager.getListChannelId();
             const oldMessageId = this.eventManager.getListMessageId();
 
+            // Check if it's the same channel
+            if (oldChannelId === channelId && oldMessageId) {
+                this.logger.info('Events list already on this channel - no action needed');
+                return {
+                    success: true,
+                    sameChannel: true,
+                    channelName: channel.name
+                };
+            }
+
             // Delete old embed from previous channel if exists
             if (oldChannelId && oldMessageId && oldChannelId !== channelId) {
                 try {
@@ -66,7 +76,11 @@ class EventListManager {
             await this.ensureEventsList();
 
             this.logger.success(`Events list channel set to: ${channel.name}`);
-            return true;
+            return {
+                success: true,
+                sameChannel: false,
+                channelName: channel.name
+            };
         } catch (error) {
             this.logger.error('Failed to set events list channel:', error);
             throw error;
