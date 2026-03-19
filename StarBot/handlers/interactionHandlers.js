@@ -1091,7 +1091,9 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
             userState.roles || []
         );
 
-        await boardManager.createEmbed(scheduled);
+        // Get scheduled with template for board embed
+        const scheduledWithTemplate = notificationManager.getScheduledWithTemplate(scheduled.id);
+        await boardManager.createEmbed(scheduledWithTemplate);
 
         userStates.delete(interaction.user.id);
 
