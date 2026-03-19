@@ -761,9 +761,7 @@ async function handleChannelSelectMenu(interaction, sharedState) {
         try {
             const result = await eventListManager.setListChannel(selectedChannel.id);
 
-            // Update control panel to show new channel
-            await boardManager.updateControlPanel();
-
+            // Respond FIRST to avoid timeout (must be <3s)
             // Different message depending on whether it's the same channel
             if (result.sameChannel) {
                 await interaction.update({
@@ -778,6 +776,9 @@ async function handleChannelSelectMenu(interaction, sharedState) {
             }
 
             logger.success(`Events list channel set to: ${selectedChannel.name}`);
+
+            // Update control panel AFTER responding (can take >3s if searching)
+            await boardManager.updateControlPanel();
         } catch (error) {
             logger.error('Failed to set events list channel:', error);
             await interaction.update({
