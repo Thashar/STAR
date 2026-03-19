@@ -144,23 +144,36 @@ async function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Login
-console.log('[DEBUG] Attempting to login...');
-console.log('[DEBUG] Token length:', config.token ? config.token.length : 'undefined');
-console.log('[DEBUG] Token starts with:', config.token ? config.token.substring(0, 20) + '...' : 'undefined');
+// Test network connectivity first
+console.log('[DEBUG] Testing network connectivity...');
+const https = require('https');
 
-// Set timeout to detect if login hangs
-setTimeout(() => {
-    console.log('[WARNING] Login timeout - no response after 30 seconds');
-    console.log('[WARNING] This usually means:');
-    console.log('[WARNING] 1. Invalid bot token');
-    console.log('[WARNING] 2. Network issues (firewall blocking Discord API)');
-    console.log('[WARNING] 3. Bot deleted from Discord Developer Portal');
-}, 30000);
+https.get('https://discord.com/api/v10/gateway', (res) => {
+    console.log('[DEBUG] ✅ Network OK - Discord API reachable (status:', res.statusCode, ')');
 
-client.login(config.token).catch(error => {
-    console.log('[ERROR] Login failed:', error.message);
-    logger.error('Login error:', error);
+    // Login after network test succeeds
+    console.log('[DEBUG] Attempting to login...');
+    console.log('[DEBUG] Token length:', config.token ? config.token.length : 'undefined');
+
+    // Set timeout to detect if login hangs
+    setTimeout(() => {
+        console.log('[WARNING] Login timeout - no response after 30 seconds');
+        console.log('[WARNING] Network is OK but login failed - check bot token in Developer Portal');
+    }, 30000);
+
+    client.login(config.token).catch(error => {
+        console.log('[ERROR] Login failed:', error.message);
+        logger.error('Login error:', error);
+        process.exit(1);
+    });
+    console.log('[DEBUG] Login call made (waiting for connection...)');
+}).on('error', (err) => {
+    console.log('[ERROR] ❌ Network FAILED - Cannot reach Discord API');
+    console.log('[ERROR] Error:', err.message);
+    console.log('[ERROR] This means:');
+    console.log('[ERROR] 1. Firewall blocking Discord (discord.com)');
+    console.log('[ERROR] 2. DNS not working');
+    console.log('[ERROR] 3. No internet access from container');
+    console.log('[ERROR] Contact your hosting provider to unblock Discord API');
     process.exit(1);
 });
-console.log('[DEBUG] Login call made (waiting for connection...)');
