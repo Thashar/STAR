@@ -24,7 +24,7 @@ class TimezoneManager {
             this.timezones = JSON.parse(fileContent);
         } catch (error) {
             if (error.code === 'ENOENT') {
-                this.timezones = { users: {} };
+                this.timezones = { timezone: 'UTC' };
                 await this.saveData();
             } else {
                 throw error;
@@ -45,21 +45,21 @@ class TimezoneManager {
         }
     }
 
-    // Get user's timezone (returns UTC +00:00 if not set)
-    getUserTimezone(userId) {
-        return this.timezones.users[userId] || 'UTC';
+    // Get bot's global timezone
+    getGlobalTimezone() {
+        return this.timezones.timezone || 'UTC';
     }
 
-    // Set user's timezone
-    async setUserTimezone(userId, timezone) {
-        this.timezones.users[userId] = timezone;
+    // Set bot's global timezone
+    async setGlobalTimezone(timezone) {
+        this.timezones.timezone = timezone;
         await this.saveData();
-        this.logger.info(`Set timezone for user ${userId}: ${timezone}`);
+        this.logger.info(`Set bot timezone: ${timezone}`);
     }
 
-    // Get current time in user's timezone
-    getCurrentTimeForUser(userId) {
-        const timezone = this.getUserTimezone(userId);
+    // Get current time in bot's timezone
+    getCurrentTime() {
+        const timezone = this.getGlobalTimezone();
         const now = new Date();
 
         try {
@@ -73,7 +73,7 @@ class TimezoneManager {
             }).replace(',', '');
         } catch (error) {
             // Fallback to UTC if timezone is invalid
-            this.logger.warn(`Invalid timezone ${timezone} for user ${userId}, using UTC`);
+            this.logger.warn(`Invalid timezone ${timezone}, using UTC`);
             return now.toLocaleString('sv-SE', {
                 timeZone: 'UTC',
                 year: 'numeric',

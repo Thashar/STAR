@@ -31,9 +31,9 @@ const client = new Client({
 
 // Initialize services
 const notificationManager = new NotificationManager(config, logger);
-const boardManager = new BoardManager(client, config, logger, notificationManager);
-const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
 const timezoneManager = new TimezoneManager(logger);
+const boardManager = new BoardManager(client, config, logger, notificationManager, timezoneManager);
+const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
 
 // User states for multi-step interactions
 const userStates = new Map();

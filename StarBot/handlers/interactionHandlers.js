@@ -234,15 +234,15 @@ async function handleEditReminderCommand(interaction, sharedState) {
 async function handleSetTimezoneCommand(interaction, sharedState) {
     const { timezoneManager } = sharedState;
 
-    const currentTimezone = timezoneManager.getUserTimezone(interaction.user.id);
-    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
+    const currentTimezone = timezoneManager.getGlobalTimezone();
+    const currentTime = timezoneManager.getCurrentTime();
 
     const timezones = timezoneManager.getCommonTimezones();
 
     // Create select menu with timezones
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('set_timezone_select')
-        .setPlaceholder('Select your timezone')
+        .setPlaceholder('Select bot timezone')
         .addOptions(timezones.map(tz => ({
             label: tz.label,
             value: tz.value,
@@ -252,7 +252,7 @@ async function handleSetTimezoneCommand(interaction, sharedState) {
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
     await interaction.reply({
-        content: `🕐 **Your current timezone:** ${currentTimezone}\n⏰ **Current time:** ${currentTime}\n\nSelect your timezone from the list below:`,
+        content: `🕐 **Bot timezone:** ${currentTimezone}\n⏰ **Current time:** ${currentTime}\n\nSelect timezone from the list below:`,
         components: [row],
         ephemeral: true
     });
@@ -534,8 +534,8 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
     }
 
     // Pokaż modal do ustawienia harmonogramu
-    // Use user's timezone (defaults to UTC if not set)
-    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
+    // Use bot's global timezone (defaults to UTC if not set)
+    const currentTime = timezoneManager.getCurrentTime();
 
     const modal = new ModalBuilder()
         .setCustomId(`set_reminder_modal_${templateId}`)
@@ -599,15 +599,18 @@ async function handleScheduledSelectForEdit(interaction, sharedState) {
 }
 
 async function handleTimezoneSelect(interaction, sharedState) {
-    const { timezoneManager } = sharedState;
+    const { timezoneManager, boardManager } = sharedState;
 
     const selectedTimezone = interaction.values[0];
-    await timezoneManager.setUserTimezone(interaction.user.id, selectedTimezone);
+    await timezoneManager.setGlobalTimezone(selectedTimezone);
 
-    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
+    const currentTime = timezoneManager.getCurrentTime();
+
+    // Update control panel to show new timezone
+    await boardManager.ensureControlPanel();
 
     await interaction.update({
-        content: `✅ **Timezone updated!**\n🕐 **New timezone:** ${selectedTimezone}\n⏰ **Current time:** ${currentTime}`,
+        content: `✅ **Bot timezone updated!**\n🕐 **New timezone:** ${selectedTimezone}\n⏰ **Current time:** ${currentTime}\n\n*All users will see times in this timezone.*`,
         components: []
     });
 }

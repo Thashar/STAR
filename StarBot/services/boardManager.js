@@ -1,11 +1,12 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 class BoardManager {
-    constructor(client, config, logger, notificationManager) {
+    constructor(client, config, logger, notificationManager, timezoneManager) {
         this.client = client;
         this.config = config;
         this.logger = logger;
         this.notificationManager = notificationManager;
+        this.timezoneManager = timezoneManager;
         this.boardChannel = null;
         this.updateInterval = null;
         this.controlPanelMessageId = null;
@@ -322,6 +323,9 @@ class BoardManager {
 
     // Build control panel with info
     buildControlPanel() {
+        const currentTimezone = this.timezoneManager.getGlobalTimezone();
+        const currentTime = this.timezoneManager.getCurrentTime();
+
         const embed = new EmbedBuilder()
             .setColor(0x5865F2) // Blurple
             .setTitle('📋 Reminders Control Panel')
@@ -330,9 +334,11 @@ class BoardManager {
                 '**1️⃣ `/new-reminder`** - Create reminder template (Text or Embed)\n' +
                 '**2️⃣ `/set-reminder`** - Schedule reminder from template\n' +
                 '**3️⃣ `/edit-reminder`** - Edit or delete templates and scheduled reminders\n' +
-                '**🕐 `/set-time-zone`** - Set your time zone for accurate scheduling\n\n' +
+                '**🕐 `/set-time-zone`** - Set bot time zone for accurate scheduling\n\n' +
                 '📝 **Text** - Plain text message\n' +
                 '📋 **Embed** - Message with embedded content\n\n' +
+                `🕐 **Current timezone:** ${currentTimezone}\n` +
+                `⏰ **Current time:** ${currentTime}\n\n` +
                 'All active reminders will appear above this panel.'
             )
             .setFooter({ text: 'STAR Bot reminder system' });
