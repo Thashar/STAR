@@ -1,8 +1,14 @@
+console.log('[DEBUG] StarBot/index.js - Starting to load...');
 const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
+console.log('[DEBUG] Loaded discord.js');
 const config = require('./config/config');
+console.log('[DEBUG] Loaded config');
 const { createBotLogger } = require('../utils/consoleLogger');
+console.log('[DEBUG] Loaded consoleLogger');
 const { handleInteraction } = require('./handlers/interactionHandlers');
+console.log('[DEBUG] Loaded interactionHandlers');
 const commands = require('./commands');
+console.log('[DEBUG] Loaded commands');
 
 // Services
 const NotificationManager = require('./services/notificationManager');
