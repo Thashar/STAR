@@ -1,5 +1,18 @@
-const messages = require('../config/messages');
-const { ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, ChannelSelectMenuBuilder, RoleSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder,
+    ChannelType,
+    ChannelSelectMenuBuilder,
+    RoleSelectMenuBuilder
+} = require('discord.js');
+
+// ==================== MAIN HANDLER ====================
 
 async function handleInteraction(interaction, sharedState) {
     const { logger } = sharedState;
@@ -26,7 +39,7 @@ async function handleInteraction(interaction, sharedState) {
     } catch (error) {
         logger.error('Error handling interaction:', error);
 
-        const errorMessage = messages.errors.generic;
+        const errorMessage = '❌ An error occurred during processing akcji.';
 
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ content: errorMessage, ephemeral: true });
@@ -36,853 +49,572 @@ async function handleInteraction(interaction, sharedState) {
     }
 }
 
+// ==================== SLASH COMMANDS ====================
+
 async function handleSlashCommand(interaction, sharedState) {
-    const { logger, notificationManager, boardManager } = sharedState;
+    const { logger } = sharedState;
 
     const commandName = interaction.commandName;
     logger.info(`Command: /${commandName} by ${interaction.user.tag}`);
 
     switch (commandName) {
-        case 'reminder':
-            await handleReminderCommand(interaction, sharedState);
+        case 'new-reminder':
+            await handleNewReminderCommand(interaction, sharedState);
             break;
 
-        case 'recurring':
-            await handleRecurringCommand(interaction, sharedState);
+        case 'set-reminder':
+            await handleSetReminderCommand(interaction, sharedState);
             break;
 
-        case 'event':
-            await handleEventCommand(interaction, sharedState);
-            break;
-
-        case 'notifications':
-            await handleListNotificationsCommand(interaction, sharedState);
-            break;
-
-        case 'delete-notification':
-            await handleDeleteNotificationCommand(interaction, sharedState);
-            break;
-
-        case 'pause-notification':
-            await handlePauseNotificationCommand(interaction, sharedState);
-            break;
-
-        case 'resume-notification':
-            await handleResumeNotificationCommand(interaction, sharedState);
-            break;
-
-        case 'refresh-board':
-            await handleRefreshBoardCommand(interaction, sharedState);
+        case 'edit-reminder':
+            await handleEditReminderCommand(interaction, sharedState);
             break;
 
         default:
             await interaction.reply({
-                content: '❌ Unknown command.',
+                content: '❌ Nieznana komenda.',
                 ephemeral: true
             });
     }
 }
 
-async function handleReminderCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, config } = sharedState;
+// ==================== /NEW-REMINDER ====================
 
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-        const timeInput = interaction.options.getString('time');
-        const message = interaction.options.getString('message');
-        const channel = interaction.options.getChannel('channel') || interaction.channel;
-        const role = interaction.options.getRole('role');
-        const category = interaction.options.getString('category') || 'CUSTOM';
-
-        // Parse time
-        const triggerAt = parseTime(timeInput);
-        if (!triggerAt) {
-            await interaction.editReply({ content: messages.errors.invalidTime });
-            return;
-        }
-
-        // Check if in the past
-        if (triggerAt < new Date()) {
-            await interaction.editReply({ content: '❌ Trigger time cannot be in the past.' });
-            return;
-        }
-
-        // Check limits
-        const userCount = notificationManager.getActiveCountByUser(interaction.user.id);
-        if (userCount >= config.maxNotificationsPerUser) {
-            await interaction.editReply({ content: messages.errors.maxNotificationsReached });
-            return;
-        }
-
-        // Create reminder
-        const roles = role ? [role.id] : [];
-        const reminder = await notificationManager.createReminder(
-            interaction.user.id,
-            triggerAt,
-            message,
-            channel.id,
-            roles,
-            [],
-            category
-        );
-
-        // Create board embed
-        await boardManager.createEmbed(reminder);
-
-        const successMsg = messages.success.notificationCreated.replace('{id}', reminder.id);
-        await interaction.editReply({ content: successMsg });
-
-        logger.success(`Created reminder ${reminder.id} by ${interaction.user.tag}`);
-    } catch (error) {
-        logger.error('Error creating reminder:', error);
-        await interaction.editReply({ content: messages.errors.generic });
-    }
-}
-
-async function handleRecurringCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, config } = sharedState;
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-        const time = interaction.options.getString('time');
-        const frequency = interaction.options.getString('frequency');
-        const message = interaction.options.getString('message');
-        const channel = interaction.options.getChannel('channel') || interaction.channel;
-        const role = interaction.options.getRole('role');
-        const daysInput = interaction.options.getString('days');
-        const category = interaction.options.getString('category') || 'CUSTOM';
-
-        // Validate time format (HH:MM)
-        if (!/^\d{1,2}:\d{2}$/.test(time)) {
-            await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00").' });
-            return;
-        }
-
-        // Parse days of week
-        let daysOfWeek = null;
-        if (frequency === 'weekly' && daysInput) {
-            daysOfWeek = daysInput.split(',').map(d => parseInt(d.trim())).filter(d => d >= 0 && d <= 6);
-            if (daysOfWeek.length === 0) {
-                await interaction.editReply({ content: '❌ Invalid days format. Use comma-separated numbers 0-6 (e.g., "0,1,2" for Sun,Mon,Tue).' });
-                return;
+async function handleNewReminderCommand(interaction, sharedState) {
+    const typeSelect = new StringSelectMenuBuilder()
+        .setCustomId('new_reminder_type_select')
+        .setPlaceholder('Choose reminder type')
+        .addOptions([
+            {
+                label: 'Text',
+                description: 'Plain text message',
+                value: 'text',
+                emoji: '📝'
+            },
+            {
+                label: 'Embed',
+                description: 'Message with embedded content',
+                value: 'embed',
+                emoji: '📋'
             }
-        }
+        ]);
 
-        // Check limits
-        const userCount = notificationManager.getActiveCountByUser(interaction.user.id);
-        if (userCount >= config.maxNotificationsPerUser) {
-            await interaction.editReply({ content: messages.errors.maxNotificationsReached });
-            return;
-        }
-
-        // Create recurring reminder
-        const roles = role ? [role.id] : [];
-        const recurring = await notificationManager.createRecurring(
-            interaction.user.id,
-            time,
-            frequency,
-            message,
-            channel.id,
-            roles,
-            [],
-            category,
-            daysOfWeek
-        );
-
-        // Create board embed
-        await boardManager.createEmbed(recurring);
-
-        const successMsg = messages.success.notificationCreated.replace('{id}', recurring.id);
-        await interaction.editReply({ content: successMsg });
-
-        logger.success(`Created recurring reminder ${recurring.id} by ${interaction.user.tag}`);
-    } catch (error) {
-        logger.error('Error creating recurring reminder:', error);
-        await interaction.editReply({ content: messages.errors.generic });
-    }
-}
-
-async function handleEventCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, config } = sharedState;
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-        const name = interaction.options.getString('name');
-        const timeInput = interaction.options.getString('time');
-        const message = interaction.options.getString('message');
-        const channel = interaction.options.getChannel('channel') || interaction.channel;
-        const role = interaction.options.getRole('role');
-        const notificationsInput = interaction.options.getString('notifications');
-        const category = interaction.options.getString('category') || 'CUSTOM';
-
-        // Parse event time
-        const eventTime = parseTime(timeInput);
-        if (!eventTime) {
-            await interaction.editReply({ content: messages.errors.invalidTime });
-            return;
-        }
-
-        // Check if in the past
-        if (eventTime < new Date()) {
-            await interaction.editReply({ content: '❌ Event time cannot be in the past.' });
-            return;
-        }
-
-        // Parse notification offsets
-        let notificationOffsets = [-86400000, -3600000, 0]; // Default: 24h, 1h, at start
-        if (notificationsInput) {
-            notificationOffsets = notificationsInput.split(',')
-                .map(h => {
-                    const hours = parseInt(h.trim());
-                    return -hours * 60 * 60 * 1000; // Convert to negative milliseconds
-                })
-                .filter(offset => !isNaN(offset));
-        }
-
-        // Check limits
-        const userCount = notificationManager.getActiveCountByUser(interaction.user.id);
-        if (userCount >= config.maxNotificationsPerUser) {
-            await interaction.editReply({ content: messages.errors.maxNotificationsReached });
-            return;
-        }
-
-        // Create event
-        const roles = role ? [role.id] : [];
-        const event = await notificationManager.createEvent(
-            interaction.user.id,
-            name,
-            eventTime,
-            message,
-            channel.id,
-            roles,
-            [],
-            category,
-            notificationOffsets
-        );
-
-        // Create board embed
-        await boardManager.createEmbed(event);
-
-        const successMsg = messages.success.notificationCreated.replace('{id}', event.id);
-        await interaction.editReply({ content: successMsg });
-
-        logger.success(`Created event ${event.id} by ${interaction.user.tag}`);
-    } catch (error) {
-        logger.error('Error creating event:', error);
-        await interaction.editReply({ content: messages.errors.generic });
-    }
-}
-
-async function handleListNotificationsCommand(interaction, sharedState) {
-    const { notificationManager } = sharedState;
-
-    const filter = interaction.options.getString('filter') || 'mine';
-
-    let notifications;
-    if (filter === 'all') {
-        notifications = notificationManager.getAllNotifications();
-    } else if (filter === 'active') {
-        notifications = notificationManager.getActiveNotifications();
-    } else {
-        notifications = notificationManager.getNotificationsByCreator(interaction.user.id);
-    }
-
-    if (notifications.length === 0) {
-        await interaction.reply({ content: '📋 No notifications found.', ephemeral: true });
-        return;
-    }
-
-    const list = notifications.map(n => {
-        const statusEmoji = n.status === 'active' ? '✅' : n.status === 'paused' ? '⏸️' : '✔️';
-        const typeEmoji = n.type === 'one-time' ? '⏰' : n.type === 'event' ? '📅' : '🔄';
-        return `${statusEmoji} ${typeEmoji} **${n.id}** - ${n.message.substring(0, 50)}${n.message.length > 50 ? '...' : ''}`;
-    }).join('\n');
+    const row = new ActionRowBuilder().addComponents(typeSelect);
 
     await interaction.reply({
-        content: `📋 **Your Notifications (${notifications.length})**\n\n${list}`,
-        ephemeral: true
-    });
-}
-
-async function handleDeleteNotificationCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger } = sharedState;
-
-    const id = interaction.options.getString('id');
-
-    const notification = notificationManager.getNotification(id);
-    if (!notification) {
-        await interaction.reply({ content: messages.errors.notificationNotFound, ephemeral: true });
-        return;
-    }
-
-    // Check ownership (or admin)
-    if (notification.creator !== interaction.user.id && !interaction.member.permissions.has('Administrator')) {
-        await interaction.reply({ content: messages.errors.noPermission, ephemeral: true });
-        return;
-    }
-
-    // Delete from board
-    await boardManager.deleteEmbed(notification);
-
-    // Delete from storage
-    await notificationManager.deleteNotification(id);
-
-    await interaction.reply({ content: messages.success.notificationDeleted, ephemeral: true });
-    logger.info(`Deleted notification ${id} by ${interaction.user.tag}`);
-}
-
-async function handlePauseNotificationCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger } = sharedState;
-
-    const id = interaction.options.getString('id');
-
-    const notification = notificationManager.getNotification(id);
-    if (!notification) {
-        await interaction.reply({ content: messages.errors.notificationNotFound, ephemeral: true });
-        return;
-    }
-
-    // Check ownership (or admin)
-    if (notification.creator !== interaction.user.id && !interaction.member.permissions.has('Administrator')) {
-        await interaction.reply({ content: messages.errors.noPermission, ephemeral: true });
-        return;
-    }
-
-    await notificationManager.pauseNotification(id);
-
-    // Update board embed
-    const updatedNotification = notificationManager.getNotification(id);
-    await boardManager.updateEmbed(updatedNotification);
-
-    await interaction.reply({ content: messages.success.notificationPaused, ephemeral: true });
-    logger.info(`Paused notification ${id} by ${interaction.user.tag}`);
-}
-
-async function handleResumeNotificationCommand(interaction, sharedState) {
-    const { notificationManager, boardManager, logger } = sharedState;
-
-    const id = interaction.options.getString('id');
-
-    const notification = notificationManager.getNotification(id);
-    if (!notification) {
-        await interaction.reply({ content: messages.errors.notificationNotFound, ephemeral: true });
-        return;
-    }
-
-    // Check ownership (or admin)
-    if (notification.creator !== interaction.user.id && !interaction.member.permissions.has('Administrator')) {
-        await interaction.reply({ content: messages.errors.noPermission, ephemeral: true });
-        return;
-    }
-
-    await notificationManager.resumeNotification(id);
-
-    // Update board embed
-    const updatedNotification = notificationManager.getNotification(id);
-    await boardManager.updateEmbed(updatedNotification);
-
-    await interaction.reply({ content: messages.success.notificationResumed, ephemeral: true });
-    logger.info(`Resumed notification ${id} by ${interaction.user.tag}`);
-}
-
-async function handleRefreshBoardCommand(interaction, sharedState) {
-    const { boardManager, logger } = sharedState;
-
-    // Admin only
-    if (!interaction.member.permissions.has('Administrator')) {
-        await interaction.reply({ content: messages.errors.noPermission, ephemeral: true });
-        return;
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-        await boardManager.syncAllNotifications();
-        await interaction.editReply({ content: '✅ Notifications board refreshed successfully!' });
-        logger.info(`Board refreshed by ${interaction.user.tag}`);
-    } catch (error) {
-        logger.error('Error refreshing board:', error);
-        await interaction.editReply({ content: messages.errors.generic });
-    }
-}
-
-// Helper function to parse time input
-function parseTime(input) {
-    // Try ISO format first
-    const isoDate = new Date(input);
-    if (!isNaN(isoDate.getTime())) {
-        return isoDate;
-    }
-
-    // Try relative time (e.g., "2h", "30m", "1d")
-    const relativeMatch = input.match(/^(\d+)(m|h|d)$/);
-    if (relativeMatch) {
-        const amount = parseInt(relativeMatch[1]);
-        const unit = relativeMatch[2];
-
-        const now = new Date();
-        switch (unit) {
-            case 'm':
-                now.setMinutes(now.getMinutes() + amount);
-                break;
-            case 'h':
-                now.setHours(now.getHours() + amount);
-                break;
-            case 'd':
-                now.setDate(now.getDate() + amount);
-                break;
-        }
-        return now;
-    }
-
-    return null;
-}
-
-async function handleButton(interaction, sharedState) {
-    const { logger } = sharedState;
-
-    const customId = interaction.customId;
-    logger.info(`Button: ${customId} by ${interaction.user.tag}`);
-
-    // Create notification button
-    if (customId === 'notification_create') {
-        await handleNotificationCreateButton(interaction, sharedState);
-        return;
-    }
-
-    // Quick time preset buttons
-    if (customId.startsWith('quick_time_')) {
-        await handleQuickTimeButton(interaction, sharedState);
-        return;
-    }
-
-    // Skip role selection for recurring reminders
-    if (customId === 'recurring_skip_roles') {
-        await handleRecurringSkipRoles(interaction, sharedState);
-        return;
-    }
-
-    // Notification action buttons
-    if (customId.startsWith('notification_modify_')) {
-        await handleNotificationModify(interaction, sharedState);
-        return;
-    }
-
-    if (customId.startsWith('notification_pause_')) {
-        await handleNotificationPause(interaction, sharedState);
-        return;
-    }
-
-    if (customId.startsWith('notification_resume_')) {
-        await handleNotificationResume(interaction, sharedState);
-        return;
-    }
-
-    if (customId.startsWith('notification_delete_')) {
-        await handleNotificationDelete(interaction, sharedState);
-        return;
-    }
-
-    // Default
-    await interaction.reply({
-        content: messages.info.processing,
-        ephemeral: true
-    });
-}
-
-// Handle notification create button
-async function handleNotificationCreateButton(interaction, sharedState) {
-    // Show select menu for notification type
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId('notification_type_select')
-                .setPlaceholder('Choose notification type')
-                .addOptions([
-                    {
-                        label: 'One-Time Reminder',
-                        description: 'Trigger once at specific time',
-                        value: 'one-time',
-                        emoji: '⏰'
-                    },
-                    {
-                        label: 'Recurring Reminder',
-                        description: 'Daily or weekly schedules',
-                        value: 'recurring',
-                        emoji: '🔄'
-                    },
-                    {
-                        label: 'Event with Notifications',
-                        description: 'Multi-stage notifications (24h, 1h, start)',
-                        value: 'event',
-                        emoji: '📅'
-                    }
-                ])
-        );
-
-    await interaction.reply({
-        content: '**Step 1:** Choose notification type',
+        content: '**Step 1:** Choose reminder type',
         components: [row],
         ephemeral: true
     });
 }
 
-// Handle quick time preset button
-async function handleQuickTimeButton(interaction, sharedState) {
-    // Extract time from customId (e.g., 'quick_time_5m' -> '5m')
-    const timePreset = interaction.customId.replace('quick_time_', '');
+// ==================== /SET-REMINDER ====================
 
-    // Store time in temporary state and show modal for message
-    // For now, show a simple modal
-    const modal = new ModalBuilder()
-        .setCustomId(`notification_modal_${timePreset}`)
-        .setTitle('Create Quick Reminder');
+async function handleSetReminderCommand(interaction, sharedState) {
+    const { notificationManager } = sharedState;
 
-    const messageInput = new TextInputBuilder()
-        .setCustomId('notification_message')
-        .setLabel('Reminder Message')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Enter your reminder message')
-        .setRequired(true)
-        .setMaxLength(200);
+    const templates = notificationManager.getAllTemplates();
 
-    const firstRow = new ActionRowBuilder().addComponents(messageInput);
-    modal.addComponents(firstRow);
+    if (templates.length === 0) {
+        await interaction.reply({
+            content: '❌ Brak szablonów przypomnień. Użyj `/new-reminder` aby stworzyć szablon.',
+            ephemeral: true
+        });
+        return;
+    }
 
-    await interaction.showModal(modal);
+    // Paginacja - max 25 opcji w select menu
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(templates.length / ITEMS_PER_PAGE);
+    const page = 0; // Pierwsza strona
+
+    await showTemplateSelectPage(interaction, sharedState, page, totalPages, templates, 'set');
 }
 
-async function handleSelectMenu(interaction, sharedState) {
-    const { logger } = sharedState;
+async function showTemplateSelectPage(interaction, sharedState, page, totalPages, templates, action) {
+    const ITEMS_PER_PAGE = 25;
+    const start = page * ITEMS_PER_PAGE;
+    const end = Math.min(start + ITEMS_PER_PAGE, templates.length);
+    const pageTemplates = templates.slice(start, end);
 
-    const customId = interaction.customId;
-    logger.info(`Select Menu: ${customId} by ${interaction.user.tag}`);
+    const options = pageTemplates.map(t => ({
+        label: t.name.substring(0, 100),
+        description: `${t.type === 'text' ? '📝 Text' : '📋 Embed'} - Utworzono ${new Date(t.createdAt).toLocaleDateString('pl-PL')}`,
+        value: t.id
+    }));
 
-    // Notification type selection
-    if (customId === 'notification_type_select') {
-        await handleNotificationTypeSelect(interaction, sharedState);
-        return;
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`template_select_${action}_${page}`)
+        .setPlaceholder(`Select szablon (strona ${page + 1}/${totalPages})`)
+        .addOptions(options);
+
+    const rows = [new ActionRowBuilder().addComponents(selectMenu)];
+
+    // Dodaj przyciski paginacji jeśli więcej niż 1 strona
+    if (totalPages > 1) {
+        const paginationRow = new ActionRowBuilder();
+
+        if (page > 0) {
+            paginationRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`template_page_${action}_${page - 1}`)
+                    .setLabel('◀ Poprzednia')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        }
+
+        paginationRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId('page_info')
+                .setLabel(`Strona ${page + 1}/${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+        );
+
+        if (page < totalPages - 1) {
+            paginationRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`template_page_${action}_${page + 1}`)
+                    .setLabel('Następna ▶')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        }
+
+        rows.push(paginationRow);
     }
 
-    // Quick time selection
-    if (customId.startsWith('quick_time_select_')) {
-        await handleQuickTimeSelect(interaction, sharedState);
-        return;
-    }
+    const content = action === 'set'
+        ? `**Select szablon do zaplanowania** (${templates.length} szablonów)`
+        : `**Select szablon do edycji** (${templates.length} szablonów)`;
 
-    // Default
+    if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({
+            content,
+            components: rows
+        });
+    } else {
+        await interaction.reply({
+            content,
+            components: rows,
+            ephemeral: true
+        });
+    }
+}
+
+// ==================== /EDIT-REMINDER ====================
+
+async function handleEditReminderCommand(interaction, sharedState) {
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('edit_reminder_templates')
+                .setLabel('Template')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('📝'),
+            new ButtonBuilder()
+                .setCustomId('edit_reminder_scheduled')
+                .setLabel('Scheduled')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('⏰')
+        );
+
     await interaction.reply({
-        content: messages.info.processing,
+        content: '**Edit reminders** - Choose type:',
+        components: [row],
         ephemeral: true
     });
 }
 
-// Handle channel select menu
-async function handleChannelSelectMenu(interaction, sharedState) {
-    const { logger, notificationManager, userStates } = sharedState;
+// ==================== BUTTON HANDLERS ====================
 
+async function handleButton(interaction, sharedState) {
+    const { logger, userStates } = sharedState;
     const customId = interaction.customId;
+
+    logger.info(`Button: ${customId} by ${interaction.user.tag}`);
+
+    // Template/Scheduled selection in /edit-reminder
+    if (customId === 'edit_reminder_templates') {
+        await handleEditTemplatesButton(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'edit_reminder_scheduled') {
+        await handleEditScheduledButton(interaction, sharedState);
+        return;
+    }
+
+    // Template pagination
+    if (customId.startsWith('template_page_')) {
+        await handleTemplatePagination(interaction, sharedState);
+        return;
+    }
+
+    // Template preview actions (approve/cancel/edit)
+    if (customId.startsWith('template_preview_approve_')) {
+        await handleTemplatePreviewApprove(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('template_preview_cancel_')) {
+        await handleTemplatePreviewCancel(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('template_preview_edit_')) {
+        await handleTemplatePreviewEdit(interaction, sharedState);
+        return;
+    }
+
+    // Scheduled preview actions (approve/cancel/edit)
+    if (customId.startsWith('scheduled_preview_approve_')) {
+        await handleScheduledPreviewApprove(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_preview_cancel_')) {
+        await handleScheduledPreviewCancel(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_preview_edit_')) {
+        await handleScheduledPreviewEdit(interaction, sharedState);
+        return;
+    }
+
+    // Edit actions (edit/delete)
+    if (customId.startsWith('edit_template_edit_')) {
+        await handleEditTemplateEdit(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_template_delete_')) {
+        await handleEditTemplateDelete(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_scheduled_edit_')) {
+        await handleEditScheduledEdit(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_scheduled_delete_')) {
+        await handleEditScheduledDelete(interaction, sharedState);
+        return;
+    }
+
+    // Board buttons for scheduled
+    if (customId.startsWith('scheduled_pause_')) {
+        await handleBoardScheduledPause(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_resume_')) {
+        await handleBoardScheduledResume(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_edit_')) {
+        await handleBoardScheduledEdit(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_delete_')) {
+        await handleBoardScheduledDelete(interaction, sharedState);
+        return;
+    }
+
+    // Confirm delete
+    if (customId.startsWith('confirm_delete_template_')) {
+        await handleConfirmDeleteTemplate(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('confirm_delete_scheduled_')) {
+        await handleConfirmDeleteScheduled(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('cancel_delete_')) {
+        await handleCancelDelete(interaction, sharedState);
+        return;
+    }
+}
+
+// ==================== SELECT MENU HANDLERS ====================
+
+async function handleSelectMenu(interaction, sharedState) {
+    const { logger } = sharedState;
+    const customId = interaction.customId;
+
+    logger.info(`Select Menu: ${customId} by ${interaction.user.tag}`);
+
+    // Type selection for /new-reminder
+    if (customId === 'new_reminder_type_select') {
+        await handleNewReminderTypeSelect(interaction, sharedState);
+        return;
+    }
+
+    // Template selection for /set-reminder
+    if (customId.startsWith('template_select_set_')) {
+        await handleTemplateSelectForSet(interaction, sharedState);
+        return;
+    }
+
+    // Template selection for /edit-reminder Templates
+    if (customId.startsWith('template_select_edit_')) {
+        await handleTemplateSelectForEdit(interaction, sharedState);
+        return;
+    }
+
+    // Scheduled selection for /edit-reminder Scheduled
+    if (customId.startsWith('scheduled_select_edit_')) {
+        await handleScheduledSelectForEdit(interaction, sharedState);
+        return;
+    }
+}
+
+async function handleNewReminderTypeSelect(interaction, sharedState) {
+    const type = interaction.values[0];
+
+    if (type === 'text') {
+        const modal = new ModalBuilder()
+            .setCustomId('new_reminder_modal_text')
+            .setTitle('New template - Text');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('e.g. Boss Reminder')
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const textInput = new TextInputBuilder()
+            .setCustomId('text')
+            .setLabel('Message content')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Reminder content...')
+            .setRequired(true)
+            .setMaxLength(2000);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(textInput)
+        );
+
+        await interaction.showModal(modal);
+    } else if (type === 'embed') {
+        const modal = new ModalBuilder()
+            .setCustomId('new_reminder_modal_embed')
+            .setTitle('New template - Embed');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('e.g. Boss Event')
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const titleInput = new TextInputBuilder()
+            .setCustomId('embedTitle')
+            .setLabel('Embed title')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Embed title')
+            .setRequired(true)
+            .setMaxLength(256);
+
+        const descInput = new TextInputBuilder()
+            .setCustomId('embedDescription')
+            .setLabel('Embed description')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Description...')
+            .setRequired(true)
+            .setMaxLength(4000);
+
+        const iconInput = new TextInputBuilder()
+            .setCustomId('embedIcon')
+            .setLabel('Embed icon (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('https://... (optional)')
+            .setRequired(false);
+
+        const imageInput = new TextInputBuilder()
+            .setCustomId('embedImage')
+            .setLabel('Embed image (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('https://... (optional)')
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(titleInput),
+            new ActionRowBuilder().addComponents(descInput),
+            new ActionRowBuilder().addComponents(iconInput),
+            new ActionRowBuilder().addComponents(imageInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+}
+
+async function handleTemplateSelectForSet(interaction, sharedState) {
+    const { notificationManager, userStates } = sharedState;
+
+    const templateId = interaction.values[0];
+    const template = notificationManager.getTemplate(templateId);
+
+    if (!template) {
+        await interaction.update({
+            content: '❌ Template not found.',
+            components: []
+        });
+        return;
+    }
+
+    // Pokaż modal do ustawienia harmonogramu
+    const modal = new ModalBuilder()
+        .setCustomId(`set_reminder_modal_${templateId}`)
+        .setTitle('Ustaw harmonogram');
+
+    const firstTriggerInput = new TextInputBuilder()
+        .setCustomId('firstTrigger')
+        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('2026-03-20 10:00')
+        .setRequired(true);
+
+    const intervalInput = new TextInputBuilder()
+        .setCustomId('interval')
+        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('1d (max 28d)')
+        .setRequired(true)
+        .setMaxLength(10);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(firstTriggerInput),
+        new ActionRowBuilder().addComponents(intervalInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function handleTemplateSelectForEdit(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const templateId = interaction.values[0];
+    const template = notificationManager.getTemplate(templateId);
+
+    if (!template) {
+        await interaction.update({
+            content: '❌ Template not found.',
+            components: []
+        });
+        return;
+    }
+
+    await showTemplateEditPreview(interaction, template);
+}
+
+async function handleScheduledSelectForEdit(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduledId = interaction.values[0];
+    const scheduled = notificationManager.getScheduledWithTemplate(scheduledId);
+
+    if (!scheduled) {
+        await interaction.update({
+            content: '❌ Scheduled reminder not found.',
+            components: []
+        });
+        return;
+    }
+
+    await showScheduledEditPreview(interaction, scheduled, sharedState);
+}
+
+// ==================== CHANNEL SELECT MENU ====================
+
+async function handleChannelSelectMenu(interaction, sharedState) {
+    const { logger, userStates } = sharedState;
+    const customId = interaction.customId;
+
     logger.info(`Channel Select: ${customId} by ${interaction.user.tag}`);
 
-    if (customId === 'recurring_channel_select') {
+    if (customId.startsWith('set_reminder_channel_')) {
+        const sessionId = customId.replace('set_reminder_channel_', '');
         const userState = userStates.get(interaction.user.id);
 
-        if (!userState || userState.type !== 'recurring' || userState.step !== 'select_channel') {
-            await interaction.update({ content: '❌ Session expired. Please start over.', components: [] });
+        if (!userState || userState.sessionId !== sessionId) {
+            await interaction.update({
+                content: '❌ Session expired. Start over.',
+                components: []
+            });
             return;
         }
 
         const selectedChannel = interaction.channels.first();
-
-        // Update user state with selected channel
         userState.channelId = selectedChannel.id;
         userState.step = 'select_roles';
         userStates.set(interaction.user.id, userState);
 
-        // Show role select menu
+        // Pokaż role select
         const roleSelect = new RoleSelectMenuBuilder()
-            .setCustomId('recurring_role_select')
+            .setCustomId(`set_reminder_roles_${sessionId}`)
             .setPlaceholder('Select roles to ping (optional)')
             .setMinValues(0)
-            .setMaxValues(5);
+            .setMaxValues(10);
 
         const skipButton = new ButtonBuilder()
-            .setCustomId('recurring_skip_roles')
-            .setLabel('Skip - No role pings')
+            .setCustomId(`set_reminder_skip_roles_${sessionId}`)
+            .setLabel('Skip - no pings')
             .setStyle(ButtonStyle.Secondary);
 
         const row1 = new ActionRowBuilder().addComponents(roleSelect);
         const row2 = new ActionRowBuilder().addComponents(skipButton);
 
         await interaction.update({
-            content: `📍 **Step 3/3:** Select roles to ping (optional)\nChannel: <#${selectedChannel.id}>`,
+            content: `**Krok 3/3:** Select roles to ping (optional)\n📍 Kanał: <#${selectedChannel.id}>`,
             components: [row1, row2]
         });
     }
 }
 
-// Handle role select menu
-async function handleRoleSelectMenu(interaction, sharedState) {
-    const { logger, notificationManager, boardManager, userStates } = sharedState;
+// ==================== ROLE SELECT MENU ====================
 
+async function handleRoleSelectMenu(interaction, sharedState) {
+    const { logger, userStates } = sharedState;
     const customId = interaction.customId;
+
     logger.info(`Role Select: ${customId} by ${interaction.user.tag}`);
 
-    if (customId === 'recurring_role_select') {
-        // Defer update immediately to avoid timeout
+    if (customId.startsWith('set_reminder_roles_')) {
         await interaction.deferUpdate();
 
+        const sessionId = customId.replace('set_reminder_roles_', '');
         const userState = userStates.get(interaction.user.id);
 
-        if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
-            await interaction.editReply({ content: '❌ Session expired. Please start over.', components: [] });
+        if (!userState || userState.sessionId !== sessionId) {
+            await interaction.editReply({
+                content: '❌ Session expired. Start over.',
+                components: []
+            });
             return;
         }
 
-        const selectedRoles = interaction.roles.map(role => role.id);
+        const selectedRoles = interaction.roles.map(r => r.id);
+        userState.roles = selectedRoles;
 
-        // Create the recurring reminder
-        const recurring = await notificationManager.createRecurring(
-            interaction.user.id,
-            userState.time,
-            userState.frequency,
-            userState.message,
-            userState.channelId,
-            selectedRoles,
-            [],
-            'DAILY_REMINDERS'
-        );
-
-        await boardManager.createEmbed(recurring);
-
-        // Clear user state
-        userStates.delete(interaction.user.id);
-
-        const roleText = selectedRoles.length > 0 ? selectedRoles.map(r => `<@&${r}>`).join(', ') : 'None';
-
-        await interaction.editReply({
-            content: `✅ **Recurring reminder created!**\n\n` +
-                `**ID:** ${recurring.id}\n` +
-                `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
-                `**Channel:** <#${userState.channelId}>\n` +
-                `**Roles:** ${roleText}`,
-            components: []
-        });
-
-        logger.success(`Created recurring reminder ${recurring.id}`);
+        await createScheduledFromUserState(interaction, sharedState, userState);
     }
 }
 
-// Handle skip roles button for recurring reminders
-async function handleRecurringSkipRoles(interaction, sharedState) {
-    const { logger, notificationManager, boardManager, userStates } = sharedState;
+// ==================== MODAL SUBMIT HANDLERS ====================
 
-    // Defer update immediately to avoid timeout
-    await interaction.deferUpdate();
-
-    const userState = userStates.get(interaction.user.id);
-
-    if (!userState || userState.type !== 'recurring' || userState.step !== 'select_roles') {
-        await interaction.editReply({ content: '❌ Session expired. Please start over.', components: [] });
-        return;
-    }
-
-    // Create the recurring reminder without role pings
-    const recurring = await notificationManager.createRecurring(
-        interaction.user.id,
-        userState.time,
-        userState.frequency,
-        userState.message,
-        userState.channelId,
-        [], // No roles
-        [],
-        'DAILY_REMINDERS'
-    );
-
-    await boardManager.createEmbed(recurring);
-
-    // Clear user state
-    userStates.delete(interaction.user.id);
-
-    await interaction.editReply({
-        content: `✅ **Recurring reminder created!**\n\n` +
-            `**ID:** ${recurring.id}\n` +
-            `**Next trigger:** <t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:F> (<t:${Math.floor(new Date(recurring.nextTrigger).getTime() / 1000)}:R>)\n` +
-            `**Channel:** <#${userState.channelId}>\n` +
-            `**Roles:** None`,
-        components: []
-    });
-
-    logger.success(`Created recurring reminder ${recurring.id} (no role pings)`);
-}
-
-// Handle notification type selection
-async function handleNotificationTypeSelect(interaction, sharedState) {
-    const selectedType = interaction.values[0];
-
-    // Show quick time selection for one-time reminders
-    if (selectedType === 'one-time') {
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new StringSelectMenuBuilder()
-                    .setCustomId('quick_time_select_onetime')
-                    .setPlaceholder('Choose when to trigger')
-                    .addOptions([
-                        { label: 'In 5 minutes', value: '5m', emoji: '⏰' },
-                        { label: 'In 15 minutes', value: '15m', emoji: '⏰' },
-                        { label: 'In 30 minutes', value: '30m', emoji: '⏰' },
-                        { label: 'In 1 hour', value: '1h', emoji: '⏰' },
-                        { label: 'In 2 hours', value: '2h', emoji: '⏰' },
-                        { label: 'In 6 hours', value: '6h', emoji: '⏰' },
-                        { label: 'In 12 hours', value: '12h', emoji: '⏰' },
-                        { label: 'In 1 day', value: '1d', emoji: '📅' },
-                        { label: 'Custom time...', value: 'custom', emoji: '✏️' }
-                    ])
-            );
-
-        await interaction.update({
-            content: '**Step 2:** Choose when to trigger the reminder',
-            components: [row]
-        });
-    }
-    // Show recurring options
-    else if (selectedType === 'recurring') {
-        // Show modal for recurring setup
-        const modal = new ModalBuilder()
-            .setCustomId('notification_modal_recurring')
-            .setTitle('Create Recurring Reminder');
-
-        const timeInput = new TextInputBuilder()
-            .setCustomId('time')
-            .setLabel('Time (HH:MM)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('20:00')
-            .setRequired(true)
-            .setMaxLength(5);
-
-        const messageInput = new TextInputBuilder()
-            .setCustomId('message')
-            .setLabel('Reminder Message')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Daily reminder message')
-            .setRequired(true)
-            .setMaxLength(200);
-
-        const frequencyInput = new TextInputBuilder()
-            .setCustomId('frequency')
-            .setLabel('Frequency (e.g. 1d, 2d, 5h, 12h)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('1d or 5h')
-            .setRequired(true)
-            .setMaxLength(10);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(timeInput),
-            new ActionRowBuilder().addComponents(messageInput),
-            new ActionRowBuilder().addComponents(frequencyInput)
-        );
-
-        await interaction.showModal(modal);
-    }
-    // Show event options
-    else if (selectedType === 'event') {
-        // Show modal for event setup
-        const modal = new ModalBuilder()
-            .setCustomId('notification_modal_event')
-            .setTitle('Create Event Notification');
-
-        const nameInput = new TextInputBuilder()
-            .setCustomId('name')
-            .setLabel('Event Name')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Raid Boss - Ender Dragon')
-            .setRequired(true)
-            .setMaxLength(100);
-
-        const timeInput = new TextInputBuilder()
-            .setCustomId('time')
-            .setLabel('Event Time (YYYY-MM-DD HH:MM)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('2024-12-31 21:00')
-            .setRequired(true);
-
-        const messageInput = new TextInputBuilder()
-            .setCustomId('message')
-            .setLabel('Event Description')
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('Epic raid event! Join us!')
-            .setRequired(true)
-            .setMaxLength(500);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(nameInput),
-            new ActionRowBuilder().addComponents(timeInput),
-            new ActionRowBuilder().addComponents(messageInput)
-        );
-
-        await interaction.showModal(modal);
-    }
-}
-
-// Handle quick time selection for one-time reminders
-async function handleQuickTimeSelect(interaction, sharedState) {
-    const selectedTime = interaction.values[0];
-
-    if (selectedTime === 'custom') {
-        // Show modal for custom time
-        const modal = new ModalBuilder()
-            .setCustomId('notification_modal_custom')
-            .setTitle('Create Reminder (Custom Time)');
-
-        const timeInput = new TextInputBuilder()
-            .setCustomId('time')
-            .setLabel('Time (YYYY-MM-DD HH:MM or 2h, 30m, etc)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('2024-12-31 20:00 or 2h')
-            .setRequired(true);
-
-        const messageInput = new TextInputBuilder()
-            .setCustomId('message')
-            .setLabel('Reminder Message')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Your reminder message')
-            .setRequired(true)
-            .setMaxLength(200);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(timeInput),
-            new ActionRowBuilder().addComponents(messageInput)
-        );
-
-        await interaction.showModal(modal);
-    } else {
-        // Quick time - show modal for message only
-        const modal = new ModalBuilder()
-            .setCustomId(`notification_modal_quick_${selectedTime}`)
-            .setTitle(`Create Reminder (in ${selectedTime})`);
-
-        const messageInput = new TextInputBuilder()
-            .setCustomId('message')
-            .setLabel('Reminder Message')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Your reminder message')
-            .setRequired(true)
-            .setMaxLength(200);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(messageInput)
-        );
-
-        await interaction.showModal(modal);
-    }
-}
-
-// Handle modal submissions
 async function handleModalSubmit(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, config, userStates } = sharedState;
+    const { notificationManager, logger, userStates } = sharedState;
     const customId = interaction.customId;
 
     logger.info(`Modal Submit: ${customId} by ${interaction.user.tag}`);
@@ -890,336 +622,1087 @@ async function handleModalSubmit(interaction, sharedState) {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-        // Quick reminder with preset time
-        if (customId.startsWith('notification_modal_quick_')) {
-            const timePreset = customId.replace('notification_modal_quick_', '');
-            const message = interaction.fields.getTextInputValue('message');
+        // New reminder - Text
+        if (customId === 'new_reminder_modal_text') {
+            const name = interaction.fields.getTextInputValue('name');
+            const text = interaction.fields.getTextInputValue('text');
 
-            // Parse time
-            const triggerAt = parseTime(timePreset);
-            if (!triggerAt) {
-                await interaction.editReply({ content: messages.errors.invalidTime });
-                return;
-            }
-
-            // Create reminder
-            const reminder = await notificationManager.createReminder(
-                interaction.user.id,
-                triggerAt,
-                message,
-                interaction.channel.id,
-                [],
-                [],
-                'CUSTOM'
-            );
-
-            await boardManager.createEmbed(reminder);
-            await interaction.editReply({ content: `✅ Reminder created! Will trigger in ${timePreset}.\nID: **${reminder.id}**` });
-            logger.success(`Created quick reminder ${reminder.id}`);
-        }
-        // Custom time reminder
-        else if (customId === 'notification_modal_custom') {
-            const timeInput = interaction.fields.getTextInputValue('time');
-            const message = interaction.fields.getTextInputValue('message');
-
-            const triggerAt = parseTime(timeInput);
-            if (!triggerAt) {
-                await interaction.editReply({ content: messages.errors.invalidTime });
-                return;
-            }
-
-            if (triggerAt < new Date()) {
-                await interaction.editReply({ content: '❌ Trigger time cannot be in the past.' });
-                return;
-            }
-
-            const reminder = await notificationManager.createReminder(
-                interaction.user.id,
-                triggerAt,
-                message,
-                interaction.channel.id,
-                [],
-                [],
-                'CUSTOM'
-            );
-
-            await boardManager.createEmbed(reminder);
-            await interaction.editReply({ content: `✅ Reminder created!\nID: **${reminder.id}**` });
-            logger.success(`Created custom reminder ${reminder.id}`);
-        }
-        // Recurring reminder
-        else if (customId === 'notification_modal_recurring') {
-            const time = interaction.fields.getTextInputValue('time').trim();
-            const message = interaction.fields.getTextInputValue('message');
-            const frequency = interaction.fields.getTextInputValue('frequency').toLowerCase().trim();
-
-            // Validate time format: must be HH:MM
-            if (!/^\d{1,2}:\d{2}$/.test(time)) {
-                await interaction.editReply({ content: '❌ Invalid time format. Use HH:MM (e.g., "20:00").' });
-                return;
-            }
-
-            // Validate frequency: must be interval format (1d, 2d, 5h, 12h, etc.)
-            if (!/^\d+[hd]$/.test(frequency)) {
-                await interaction.editReply({ content: '❌ Invalid frequency format. Use format like: 1d, 2d, 5h, 12h' });
-                return;
-            }
-
-            // Store data in userStates for next steps (channel and role selection)
+            const sessionId = Date.now().toString();
             userStates.set(interaction.user.id, {
-                type: 'recurring',
-                time,
-                message,
-                frequency,
+                sessionId,
+                type: 'text',
+                name,
+                text
+            });
+
+            await showTemplatePreview(interaction, { type: 'text', name, text }, sessionId);
+        }
+        // New reminder - Embed
+        else if (customId === 'new_reminder_modal_embed') {
+            const name = interaction.fields.getTextInputValue('name');
+            const embedTitle = interaction.fields.getTextInputValue('embedTitle');
+            const embedDescription = interaction.fields.getTextInputValue('embedDescription');
+            const embedIcon = interaction.fields.getTextInputValue('embedIcon') || null;
+            const embedImage = interaction.fields.getTextInputValue('embedImage') || null;
+
+            const sessionId = Date.now().toString();
+            userStates.set(interaction.user.id, {
+                sessionId,
+                type: 'embed',
+                name,
+                embedTitle,
+                embedDescription,
+                embedIcon,
+                embedImage
+            });
+
+            await showTemplatePreview(interaction, {
+                type: 'embed',
+                name,
+                embedTitle,
+                embedDescription,
+                embedIcon,
+                embedImage
+            }, sessionId);
+        }
+        // Set reminder schedule
+        else if (customId.startsWith('set_reminder_modal_')) {
+            const templateId = customId.replace('set_reminder_modal_', '');
+            const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
+            const interval = interaction.fields.getTextInputValue('interval');
+
+            // Parse firstTrigger
+            const firstTrigger = new Date(firstTriggerStr);
+            if (isNaN(firstTrigger.getTime())) {
+                await interaction.editReply({
+                    content: '❌ Invalid date format. Użyj: YYYY-MM-DD HH:MM (np. 2026-03-20 10:00)'
+                });
+                return;
+            }
+
+            if (firstTrigger < new Date()) {
+                await interaction.editReply({
+                    content: '❌ First trigger date cannot be in the past.'
+                });
+                return;
+            }
+
+            // Validate interval
+            if (!notificationManager.validateInterval(interval)) {
+                await interaction.editReply({
+                    content: '❌ Invalid interval format. Użyj: 1s, 1m, 1h, 1d (max 28d)'
+                });
+                return;
+            }
+
+            const intervalMs = notificationManager.parseInterval(interval);
+            const maxInterval = 28 * 24 * 60 * 60 * 1000;
+            if (intervalMs > maxInterval) {
+                await interaction.editReply({
+                    content: '❌ Interval cannot exceed 28 days.'
+                });
+                return;
+            }
+
+            // Store in user state for channel/role selection
+            const sessionId = Date.now().toString();
+            userStates.set(interaction.user.id, {
+                sessionId,
+                templateId,
+                firstTrigger: firstTrigger.toISOString(),
+                interval,
                 step: 'select_channel'
             });
 
-            // Show channel select menu
-            const channels = await interaction.guild.channels.fetch();
-            const textChannels = channels.filter(ch => ch.isTextBased() && !ch.isThread());
-
+            // Show channel select
             const channelSelect = new ChannelSelectMenuBuilder()
-                .setCustomId('recurring_channel_select')
-                .setPlaceholder('Select channel for notifications')
+                .setCustomId(`set_reminder_channel_${sessionId}`)
+                .setPlaceholder('Select kanał dla powiadomień')
                 .setChannelTypes([ChannelType.GuildText]);
 
             const row = new ActionRowBuilder().addComponents(channelSelect);
 
             await interaction.editReply({
-                content: '📍 **Step 2/3:** Select the channel where notifications will be sent',
+                content: '**Krok 2/3:** Select the channel where notifications will be sent',
                 components: [row]
             });
         }
-        // Event
-        else if (customId === 'notification_modal_event') {
-            const name = interaction.fields.getTextInputValue('name');
-            const timeInput = interaction.fields.getTextInputValue('time');
-            const message = interaction.fields.getTextInputValue('message');
+        // Edit template
+        else if (customId.startsWith('edit_template_modal_')) {
+            const templateId = customId.replace('edit_template_modal_', '');
+            const template = notificationManager.getTemplate(templateId);
 
-            const eventTime = parseTime(timeInput);
-            if (!eventTime) {
-                await interaction.editReply({ content: messages.errors.invalidTime });
+            if (!template) {
+                await interaction.editReply({ content: '❌ Template not found.' });
                 return;
             }
 
-            if (eventTime < new Date()) {
-                await interaction.editReply({ content: '❌ Event time cannot be in the past.' });
-                return;
+            if (template.type === 'text') {
+                const name = interaction.fields.getTextInputValue('name');
+                const text = interaction.fields.getTextInputValue('text');
+
+                await notificationManager.updateTemplate(templateId, { name, text });
+                await interaction.editReply({
+                    content: `✅ Szablon **${name}** has been updated!`,
+                    components: []
+                });
+            } else {
+                const name = interaction.fields.getTextInputValue('name');
+                const embedTitle = interaction.fields.getTextInputValue('embedTitle');
+                const embedDescription = interaction.fields.getTextInputValue('embedDescription');
+                const embedIcon = interaction.fields.getTextInputValue('embedIcon') || null;
+                const embedImage = interaction.fields.getTextInputValue('embedImage') || null;
+
+                await notificationManager.updateTemplate(templateId, {
+                    name,
+                    embedTitle,
+                    embedDescription,
+                    embedIcon,
+                    embedImage
+                });
+                await interaction.editReply({
+                    content: `✅ Szablon **${name}** has been updated!`,
+                    components: []
+                });
             }
 
-            const event = await notificationManager.createEvent(
-                interaction.user.id,
-                name,
-                eventTime,
-                message,
-                interaction.channel.id,
-                [],
-                [],
-                'BOSS_EVENTS',
-                [-86400000, -3600000, 0] // 24h, 1h, start
-            );
-
-            await boardManager.createEmbed(event);
-            await interaction.editReply({ content: `✅ Event created!\nID: **${event.id}**\nNotifications: 24h before, 1h before, at start` });
-            logger.success(`Created event ${event.id}`);
+            logger.success(`Updated template ${templateId}`);
         }
-        // Modify existing notification
-        else if (customId.startsWith('notification_modify_modal_')) {
-            const notificationId = customId.replace('notification_modify_modal_', '');
-            const newMessage = interaction.fields.getTextInputValue('message');
+        // Edit scheduled
+        else if (customId.startsWith('edit_scheduled_modal_')) {
+            const scheduledId = customId.replace('edit_scheduled_modal_', '');
+            const scheduled = notificationManager.getScheduled(scheduledId);
 
-            const notification = notificationManager.getNotification(notificationId);
-            if (!notification) {
-                await interaction.reply({ content: '❌ Notification not found.', ephemeral: true });
+            if (!scheduled) {
+                await interaction.editReply({ content: '❌ Scheduled reminder not found.' });
                 return;
             }
 
-            // Update notification
-            await notificationManager.updateNotification(notificationId, { message: newMessage });
+            const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
+            const interval = interaction.fields.getTextInputValue('interval');
 
-            // Update board embed
-            const updatedNotification = notificationManager.getNotification(notificationId);
-            await boardManager.updateEmbed(updatedNotification);
+            // Parse firstTrigger
+            const firstTrigger = new Date(firstTriggerStr);
+            if (isNaN(firstTrigger.getTime())) {
+                await interaction.editReply({
+                    content: '❌ Invalid date format. Użyj: YYYY-MM-DD HH:MM'
+                });
+                return;
+            }
 
-            await interaction.reply({
-                content: `✅ Notification **${notificationId}** updated!`,
-                ephemeral: true
+            // Validate interval
+            if (!notificationManager.validateInterval(interval)) {
+                await interaction.editReply({
+                    content: '❌ Invalid interval format. Użyj: 1s, 1m, 1h, 1d (max 28d)'
+                });
+                return;
+            }
+
+            const intervalMs = notificationManager.parseInterval(interval);
+            const maxInterval = 28 * 24 * 60 * 60 * 1000;
+            if (intervalMs > maxInterval) {
+                await interaction.editReply({
+                    content: '❌ Interval cannot exceed 28 days.'
+                });
+                return;
+            }
+
+            await notificationManager.updateScheduled(scheduledId, {
+                firstTrigger: firstTrigger.toISOString(),
+                interval,
+                intervalMs,
+                nextTrigger: firstTrigger.toISOString()
             });
 
-            logger.success(`Modified notification ${notificationId}`);
+            // Update board
+            const { boardManager } = sharedState;
+            const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+            await boardManager.updateEmbed(updated);
+
+            await interaction.editReply({
+                content: `✅ Zaplanowane przypomnienie **${scheduledId}** zostało zaktualizowane!`,
+                components: []
+            });
+
+            logger.success(`Updated scheduled ${scheduledId}`);
         }
 
     } catch (error) {
         logger.error('Error handling modal submit:', error);
-
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: messages.errors.generic, ephemeral: true });
-        } else {
-            await interaction.reply({ content: messages.errors.generic, ephemeral: true });
-        }
+        await interaction.editReply({ content: '❌ An error occurred during processing.' });
     }
 }
 
-// Helper function to parse time input (copied from slash commands)
-function parseTime(input) {
-    // Try ISO format first
-    const isoDate = new Date(input);
-    if (!isNaN(isoDate.getTime())) {
-        return isoDate;
+// ==================== HELPER FUNCTIONS ====================
+
+async function showTemplatePreview(interaction, data, sessionId) {
+    let previewContent = '**Template Preview:**\n\n';
+    previewContent += `📝 **Nazwa:** ${data.name}\n`;
+    previewContent += `📋 **Typ:** ${data.type === 'text' ? 'Text' : 'Embed'}\n\n`;
+    previewContent += '**How the reminder will look:**';
+
+    const embeds = [];
+    if (data.type === 'text') {
+        previewContent += `\n\n${data.text}`;
+    } else {
+        const embed = new EmbedBuilder()
+            .setTitle(data.embedTitle)
+            .setDescription(data.embedDescription)
+            .setColor(0x5865F2);
+
+        if (data.embedIcon) embed.setThumbnail(data.embedIcon);
+        if (data.embedImage) embed.setImage(data.embedImage);
+
+        embeds.push(embed);
     }
 
-    // Try relative time (e.g., "2h", "30m", "1d")
-    const relativeMatch = input.match(/^(\d+)(m|h|d)$/);
-    if (relativeMatch) {
-        const amount = parseInt(relativeMatch[1]);
-        const unit = relativeMatch[2];
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`template_preview_approve_${sessionId}`)
+                .setLabel('Approve')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('✅'),
+            new ButtonBuilder()
+                .setCustomId(`template_preview_cancel_${sessionId}`)
+                .setLabel('Odrzuć')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('❌'),
+            new ButtonBuilder()
+                .setCustomId(`template_preview_edit_${sessionId}`)
+                .setLabel('Edit')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('✏️')
+        );
 
-        const now = new Date();
-        switch (unit) {
-            case 'm':
-                now.setMinutes(now.getMinutes() + amount);
-                break;
-            case 'h':
-                now.setHours(now.getHours() + amount);
-                break;
-            case 'd':
-                now.setDate(now.getDate() + amount);
-                break;
-        }
-        return now;
-    }
-
-    return null;
+    await interaction.editReply({
+        content: previewContent,
+        embeds,
+        components: [row]
+    });
 }
 
-// Handle notification modify button
-async function handleNotificationModify(interaction, sharedState) {
-    const { logger, notificationManager } = sharedState;
+async function showTemplateEditPreview(interaction, template) {
+    let content = '**Edit Template:**\n\n';
+    content += `📝 **Nazwa:** ${template.name}\n`;
+    content += `📋 **Typ:** ${template.type === 'text' ? 'Text' : 'Embed'}\n`;
+    content += `🆔 **ID:** ${template.id}\n\n`;
+    content += '**Preview:**';
 
-    // Extract notification ID from customId
-    const notificationId = interaction.customId.replace('notification_modify_', '');
-    const notification = notificationManager.getNotification(notificationId);
+    const embeds = [];
+    if (template.type === 'text') {
+        content += `\n\n${template.text}`;
+    } else {
+        const embed = new EmbedBuilder()
+            .setTitle(template.embedTitle)
+            .setDescription(template.embedDescription)
+            .setColor(0x5865F2);
 
-    if (!notification) {
-        await interaction.reply({
-            content: '❌ Notification not found.',
-            ephemeral: true
+        if (template.embedIcon) embed.setThumbnail(template.embedIcon);
+        if (template.embedImage) embed.setImage(template.embedImage);
+
+        embeds.push(embed);
+    }
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`edit_template_edit_${template.id}`)
+                .setLabel('Edit')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('✏️'),
+            new ButtonBuilder()
+                .setCustomId(`edit_template_delete_${template.id}`)
+                .setLabel('Delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️')
+        );
+
+    await interaction.update({
+        content,
+        embeds,
+        components: [row]
+    });
+}
+
+async function showScheduledEditPreview(interaction, scheduled, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const template = scheduled.template;
+    const nextTriggerDate = new Date(scheduled.nextTrigger);
+    const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
+
+    let content = '**Zaplanowane przypomnienie:**\n\n';
+    content += `⏰ **ID:** ${scheduled.id}\n`;
+    content += `📝 **Szablon:** ${template.name}\n`;
+    content += `📅 **Pierwszy trigger:** ${new Date(scheduled.firstTrigger).toLocaleString('pl-PL')}\n`;
+    content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+    content += `⏭️ **Następny trigger:** <t:${nextTriggerTimestamp}:F> (<t:${nextTriggerTimestamp}:R>)\n`;
+    content += `📍 **Kanał:** <#${scheduled.channelId}>\n`;
+    content += `👥 **Role:** ${scheduled.roles.length > 0 ? scheduled.roles.map(r => `<@&${r}>`).join(', ') : 'Brak'}\n`;
+    content += `📊 **Status:** ${scheduled.status === 'active' ? '🟢 Aktywne' : '⏸️ Wstrzymane'}\n\n`;
+    content += '**Podgląd wiadomości:**';
+
+    const embeds = [];
+    if (template.type === 'text') {
+        content += `\n\n${template.text}`;
+    } else {
+        const embed = new EmbedBuilder()
+            .setTitle(template.embedTitle)
+            .setDescription(template.embedDescription)
+            .setColor(0x5865F2);
+
+        if (template.embedIcon) embed.setThumbnail(template.embedIcon);
+        if (template.embedImage) embed.setImage(template.embedImage);
+
+        embeds.push(embed);
+    }
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`edit_scheduled_edit_${scheduled.id}`)
+                .setLabel('Edit')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('✏️'),
+            new ButtonBuilder()
+                .setCustomId(`edit_scheduled_delete_${scheduled.id}`)
+                .setLabel('Delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️')
+        );
+
+    await interaction.update({
+        content,
+        embeds,
+        components: [row]
+    });
+}
+
+async function createScheduledFromUserState(interaction, sharedState, userState) {
+    const { notificationManager, boardManager, logger, userStates } = sharedState;
+
+    try {
+        const scheduled = await notificationManager.createScheduled(
+            interaction.user.id,
+            userState.templateId,
+            userState.firstTrigger,
+            userState.interval,
+            userState.channelId,
+            userState.roles || []
+        );
+
+        await boardManager.createEmbed(scheduled);
+
+        userStates.delete(interaction.user.id);
+
+        const template = notificationManager.getTemplate(userState.templateId);
+        const nextTriggerDate = new Date(scheduled.nextTrigger);
+        const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
+
+        let content = '✅ **Zaplanowane przypomnienie utworzone!**\n\n';
+        content += `⏰ **ID:** ${scheduled.id}\n`;
+        content += `📝 **Szablon:** ${template.name}\n`;
+        content += `📅 **Pierwszy trigger:** <t:${nextTriggerTimestamp}:F>\n`;
+        content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+        content += `📍 **Kanał:** <#${userState.channelId}>\n`;
+        content += `👥 **Role:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'Brak'}`;
+
+        await interaction.editReply({
+            content,
+            components: []
+        });
+
+        logger.success(`Created scheduled reminder ${scheduled.id}`);
+    } catch (error) {
+        logger.error('Error creating scheduled reminder:', error);
+        await interaction.editReply({
+            content: `❌ Error: ${error.message}`,
+            components: []
+        });
+    }
+}
+
+// ==================== BUTTON ACTION HANDLERS ====================
+
+async function handleTemplatePreviewApprove(interaction, sharedState) {
+    const { notificationManager, userStates, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const sessionId = interaction.customId.replace('template_preview_approve_', '');
+    const userState = userStates.get(interaction.user.id);
+
+    if (!userState || userState.sessionId !== sessionId) {
+        await interaction.editReply({
+            content: '❌ Sesja wygasła.',
+            embeds: [],
+            components: []
         });
         return;
     }
 
-    // Build modal with current values
-    const modal = new ModalBuilder()
-        .setCustomId(`notification_modify_modal_${notificationId}`)
-        .setTitle('Modify Notification');
+    try {
+        let template;
+        if (userState.type === 'text') {
+            template = await notificationManager.createTemplate(
+                interaction.user.id,
+                userState.name,
+                'text',
+                { text: userState.text }
+            );
+        } else {
+            template = await notificationManager.createTemplate(
+                interaction.user.id,
+                userState.name,
+                'embed',
+                {
+                    embedTitle: userState.embedTitle,
+                    embedDescription: userState.embedDescription,
+                    embedIcon: userState.embedIcon,
+                    embedImage: userState.embedImage
+                }
+            );
+        }
 
-    // Message input
-    const messageInput = new TextInputBuilder()
-        .setCustomId('message')
-        .setLabel('Message')
-        .setStyle(TextInputStyle.Paragraph)
-        .setValue(notification.message || '')
+        userStates.delete(interaction.user.id);
+
+        await interaction.editReply({
+            content: `✅ Szablon **${template.name}** has been created!\n🆔 ID: ${template.id}\n\nUżyj \`/set-reminder\` aby zaplanować przypomnienia.`,
+            embeds: [],
+            components: []
+        });
+
+        logger.success(`Created template ${template.id}`);
+    } catch (error) {
+        logger.error('Error creating template:', error);
+        await interaction.editReply({
+            content: '❌ Error tworzenia szablonu.',
+            embeds: [],
+            components: []
+        });
+    }
+}
+
+async function handleTemplatePreviewCancel(interaction, sharedState) {
+    const { userStates } = sharedState;
+
+    const sessionId = interaction.customId.replace('template_preview_cancel_', '');
+    userStates.delete(interaction.user.id);
+
+    await interaction.update({
+        content: '❌ Cancelled tworzenie szablonu.',
+        embeds: [],
+        components: []
+    });
+}
+
+async function handleTemplatePreviewEdit(interaction, sharedState) {
+    const { userStates } = sharedState;
+
+    const sessionId = interaction.customId.replace('template_preview_edit_', '');
+    const userState = userStates.get(interaction.user.id);
+
+    if (!userState || userState.sessionId !== sessionId) {
+        await interaction.update({
+            content: '❌ Sesja wygasła.',
+            embeds: [],
+            components: []
+        });
+        return;
+    }
+
+    if (userState.type === 'text') {
+        const modal = new ModalBuilder()
+            .setCustomId('new_reminder_modal_text')
+            .setTitle('Edit template - Text');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setValue(userState.name)
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const textInput = new TextInputBuilder()
+            .setCustomId('text')
+            .setLabel('Message content')
+            .setStyle(TextInputStyle.Paragraph)
+            .setValue(userState.text)
+            .setRequired(true)
+            .setMaxLength(2000);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(textInput)
+        );
+
+        await interaction.showModal(modal);
+    } else {
+        const modal = new ModalBuilder()
+            .setCustomId('new_reminder_modal_embed')
+            .setTitle('Edit template - Embed');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setValue(userState.name)
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const titleInput = new TextInputBuilder()
+            .setCustomId('embedTitle')
+            .setLabel('Embed title')
+            .setStyle(TextInputStyle.Short)
+            .setValue(userState.embedTitle)
+            .setRequired(true)
+            .setMaxLength(256);
+
+        const descInput = new TextInputBuilder()
+            .setCustomId('embedDescription')
+            .setLabel('Embed description')
+            .setStyle(TextInputStyle.Paragraph)
+            .setValue(userState.embedDescription)
+            .setRequired(true)
+            .setMaxLength(4000);
+
+        const iconInput = new TextInputBuilder()
+            .setCustomId('embedIcon')
+            .setLabel('Embed icon (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(userState.embedIcon || '')
+            .setRequired(false);
+
+        const imageInput = new TextInputBuilder()
+            .setCustomId('embedImage')
+            .setLabel('Embed image (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(userState.embedImage || '')
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(titleInput),
+            new ActionRowBuilder().addComponents(descInput),
+            new ActionRowBuilder().addComponents(iconInput),
+            new ActionRowBuilder().addComponents(imageInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+}
+
+async function handleScheduledPreviewApprove(interaction, sharedState) {
+    // Placeholder - not used in current flow
+    await interaction.update({
+        content: '✅ Zatwierdzone',
+        components: []
+    });
+}
+
+async function handleScheduledPreviewCancel(interaction, sharedState) {
+    // Placeholder - not used in current flow
+    await interaction.update({
+        content: '❌ Cancelled',
+        components: []
+    });
+}
+
+async function handleScheduledPreviewEdit(interaction, sharedState) {
+    // Placeholder - not used in current flow
+    await interaction.reply({
+        content: '✏️ Edycja...',
+        ephemeral: true
+    });
+}
+
+async function handleEditTemplatesButton(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const templates = notificationManager.getAllTemplates();
+
+    if (templates.length === 0) {
+        await interaction.update({
+            content: '❌ Brak szablonów. Użyj `/new-reminder` aby stworzyć szablon.',
+            components: []
+        });
+        return;
+    }
+
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(templates.length / ITEMS_PER_PAGE);
+
+    await showTemplateSelectPage(interaction, sharedState, 0, totalPages, templates, 'edit');
+}
+
+async function handleEditScheduledButton(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduled = notificationManager.getAllScheduled();
+
+    if (scheduled.length === 0) {
+        await interaction.update({
+            content: '❌ Brak zaplanowanych przypomnień. Użyj `/set-reminder` aby je utworzyć.',
+            components: []
+        });
+        return;
+    }
+
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(scheduled.length / ITEMS_PER_PAGE);
+    const page = 0;
+    const start = page * ITEMS_PER_PAGE;
+    const end = Math.min(start + ITEMS_PER_PAGE, scheduled.length);
+    const pageScheduled = scheduled.slice(start, end);
+
+    const options = pageScheduled.map(s => {
+        const template = notificationManager.getTemplate(s.templateId);
+        const templateName = template ? template.name : 'Unknown';
+        return {
+            label: `⏰ ${templateName}`.substring(0, 100),
+            description: `ID: ${s.id} - Następny: ${new Date(s.nextTrigger).toLocaleString('pl-PL')}`.substring(0, 100),
+            value: s.id
+        };
+    });
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`scheduled_select_edit_${page}`)
+        .setPlaceholder(`Select zaplanowane przypomnienie (${scheduled.length} total)`)
+        .addOptions(options);
+
+    const rows = [new ActionRowBuilder().addComponents(selectMenu)];
+
+    // Pagination
+    if (totalPages > 1) {
+        const paginationRow = new ActionRowBuilder();
+
+        if (page > 0) {
+            paginationRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`scheduled_page_edit_${page - 1}`)
+                    .setLabel('◀ Poprzednia')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        }
+
+        paginationRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId('page_info')
+                .setLabel(`Strona ${page + 1}/${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+        );
+
+        if (page < totalPages - 1) {
+            paginationRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`scheduled_page_edit_${page + 1}`)
+                    .setLabel('Następna ▶')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        }
+
+        rows.push(paginationRow);
+    }
+
+    await interaction.update({
+        content: `**Select zaplanowane przypomnienie** (${scheduled.length} total)`,
+        components: rows
+    });
+}
+
+async function handleTemplatePagination(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const parts = interaction.customId.split('_');
+    const action = parts[2]; // 'set' or 'edit'
+    const page = parseInt(parts[3]);
+
+    const templates = notificationManager.getAllTemplates();
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(templates.length / ITEMS_PER_PAGE);
+
+    await showTemplateSelectPage(interaction, sharedState, page, totalPages, templates, action);
+}
+
+async function handleEditTemplateEdit(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const templateId = interaction.customId.replace('edit_template_edit_', '');
+    const template = notificationManager.getTemplate(templateId);
+
+    if (!template) {
+        await interaction.update({
+            content: '❌ Template not found.',
+            components: []
+        });
+        return;
+    }
+
+    if (template.type === 'text') {
+        const modal = new ModalBuilder()
+            .setCustomId(`edit_template_modal_${templateId}`)
+            .setTitle('Edit template - Text');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setValue(template.name)
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const textInput = new TextInputBuilder()
+            .setCustomId('text')
+            .setLabel('Message content')
+            .setStyle(TextInputStyle.Paragraph)
+            .setValue(template.text)
+            .setRequired(true)
+            .setMaxLength(2000);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(textInput)
+        );
+
+        await interaction.showModal(modal);
+    } else {
+        const modal = new ModalBuilder()
+            .setCustomId(`edit_template_modal_${templateId}`)
+            .setTitle('Edit template - Embed');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('name')
+            .setLabel('Template name')
+            .setStyle(TextInputStyle.Short)
+            .setValue(template.name)
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const titleInput = new TextInputBuilder()
+            .setCustomId('embedTitle')
+            .setLabel('Embed title')
+            .setStyle(TextInputStyle.Short)
+            .setValue(template.embedTitle)
+            .setRequired(true)
+            .setMaxLength(256);
+
+        const descInput = new TextInputBuilder()
+            .setCustomId('embedDescription')
+            .setLabel('Embed description')
+            .setStyle(TextInputStyle.Paragraph)
+            .setValue(template.embedDescription)
+            .setRequired(true)
+            .setMaxLength(4000);
+
+        const iconInput = new TextInputBuilder()
+            .setCustomId('embedIcon')
+            .setLabel('Embed icon (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(template.embedIcon || '')
+            .setRequired(false);
+
+        const imageInput = new TextInputBuilder()
+            .setCustomId('embedImage')
+            .setLabel('Embed image (URL)')
+            .setStyle(TextInputStyle.Short)
+            .setValue(template.embedImage || '')
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(titleInput),
+            new ActionRowBuilder().addComponents(descInput),
+            new ActionRowBuilder().addComponents(iconInput),
+            new ActionRowBuilder().addComponents(imageInput)
+        );
+
+        await interaction.showModal(modal);
+    }
+}
+
+async function handleEditTemplateDelete(interaction, sharedState) {
+    const templateId = interaction.customId.replace('edit_template_delete_', '');
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`confirm_delete_template_${templateId}`)
+                .setLabel('Yes, delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️'),
+            new ButtonBuilder()
+                .setCustomId(`cancel_delete_${templateId}`)
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+    await interaction.update({
+        content: '⚠️ **Are you sure you want to delete this template?**\n\nWarning: All scheduled reminders using this template will also be deleted!',
+        embeds: [],
+        components: [row]
+    });
+}
+
+async function handleEditScheduledEdit(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduledId = interaction.customId.replace('edit_scheduled_edit_', '');
+    const scheduled = notificationManager.getScheduled(scheduledId);
+
+    if (!scheduled) {
+        await interaction.update({
+            content: '❌ Scheduled reminder not found.',
+            components: []
+        });
+        return;
+    }
+
+    const modal = new ModalBuilder()
+        .setCustomId(`edit_scheduled_modal_${scheduledId}`)
+        .setTitle('Edit scheduled reminder');
+
+    const firstTriggerDate = new Date(scheduled.firstTrigger);
+    const formattedDate = `${firstTriggerDate.getFullYear()}-${String(firstTriggerDate.getMonth() + 1).padStart(2, '0')}-${String(firstTriggerDate.getDate()).padStart(2, '0')} ${String(firstTriggerDate.getHours()).padStart(2, '0')}:${String(firstTriggerDate.getMinutes()).padStart(2, '0')}`;
+
+    const firstTriggerInput = new TextInputBuilder()
+        .setCustomId('firstTrigger')
+        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(formattedDate)
+        .setRequired(true);
+
+    const intervalInput = new TextInputBuilder()
+        .setCustomId('interval')
+        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(scheduled.interval)
         .setRequired(true)
-        .setMaxLength(500);
+        .setMaxLength(10);
 
     modal.addComponents(
-        new ActionRowBuilder().addComponents(messageInput)
+        new ActionRowBuilder().addComponents(firstTriggerInput),
+        new ActionRowBuilder().addComponents(intervalInput)
     );
 
     await interaction.showModal(modal);
-    logger.info(`Modify modal shown for notification ${notificationId}`);
 }
 
-// Handle notification pause button
-async function handleNotificationPause(interaction, sharedState) {
-    const { logger, notificationManager, boardManager } = sharedState;
+async function handleEditScheduledDelete(interaction, sharedState) {
+    const scheduledId = interaction.customId.replace('edit_scheduled_delete_', '');
 
-    // Extract notification ID from customId
-    const notificationId = interaction.customId.replace('notification_pause_', '');
-    const notification = notificationManager.getNotification(notificationId);
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`confirm_delete_scheduled_${scheduledId}`)
+                .setLabel('Yes, delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️'),
+            new ButtonBuilder()
+                .setCustomId(`cancel_delete_${scheduledId}`)
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary)
+        );
 
-    if (!notification) {
+    await interaction.update({
+        content: '⚠️ **Are you sure you want to delete this scheduled reminder?**',
+        embeds: [],
+        components: [row]
+    });
+}
+
+async function handleConfirmDeleteTemplate(interaction, sharedState) {
+    const { notificationManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const templateId = interaction.customId.replace('confirm_delete_template_', '');
+
+    try {
+        await notificationManager.deleteTemplate(templateId);
+
+        await interaction.editReply({
+            content: `✅ Szablon **${templateId}** and all associated scheduled reminders have been deleted.`,
+            embeds: [],
+            components: []
+        });
+
+        logger.success(`Deleted template ${templateId}`);
+    } catch (error) {
+        logger.error('Error deleting template:', error);
+        await interaction.editReply({
+            content: '❌ Error deleting template.',
+            embeds: [],
+            components: []
+        });
+    }
+}
+
+async function handleConfirmDeleteScheduled(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const scheduledId = interaction.customId.replace('confirm_delete_scheduled_', '');
+
+    try {
+        const scheduled = notificationManager.getScheduled(scheduledId);
+        if (scheduled) {
+            await boardManager.deleteEmbed(scheduled);
+        }
+
+        await notificationManager.deleteScheduled(scheduledId);
+
+        await interaction.editReply({
+            content: `✅ Zaplanowane przypomnienie **${scheduledId}** has been deleted.`,
+            embeds: [],
+            components: []
+        });
+
+        logger.success(`Deleted scheduled ${scheduledId}`);
+    } catch (error) {
+        logger.error('Error deleting scheduled:', error);
+        await interaction.editReply({
+            content: '❌ Error deleting scheduled reminder.',
+            embeds: [],
+            components: []
+        });
+    }
+}
+
+async function handleCancelDelete(interaction, sharedState) {
+    await interaction.update({
+        content: '❌ Cancelled usuwanie.',
+        embeds: [],
+        components: []
+    });
+}
+
+// ==================== BOARD BUTTON HANDLERS ====================
+
+async function handleBoardScheduledPause(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const scheduledId = interaction.customId.replace('scheduled_pause_', '');
+
+    try {
+        await notificationManager.pauseScheduled(scheduledId);
+
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateEmbed(updated);
+
+        await interaction.followUp({
+            content: `⏸️ Zaplanowane przypomnienie **${scheduledId}** has been paused.`,
+            ephemeral: true
+        });
+
+        logger.success(`Paused scheduled ${scheduledId} from board`);
+    } catch (error) {
+        logger.error('Error pausing scheduled:', error);
+        await interaction.followUp({
+            content: '❌ Error pausing reminder.',
+            ephemeral: true
+        });
+    }
+}
+
+async function handleBoardScheduledResume(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const scheduledId = interaction.customId.replace('scheduled_resume_', '');
+
+    try {
+        await notificationManager.resumeScheduled(scheduledId);
+
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateEmbed(updated);
+
+        await interaction.followUp({
+            content: `▶️ Zaplanowane przypomnienie **${scheduledId}** has been resumed.`,
+            ephemeral: true
+        });
+
+        logger.success(`Resumed scheduled ${scheduledId} from board`);
+    } catch (error) {
+        logger.error('Error resuming scheduled:', error);
+        await interaction.followUp({
+            content: '❌ Error resuming reminder.',
+            ephemeral: true
+        });
+    }
+}
+
+async function handleBoardScheduledEdit(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduledId = interaction.customId.replace('scheduled_edit_', '');
+    const scheduled = notificationManager.getScheduled(scheduledId);
+
+    if (!scheduled) {
         await interaction.reply({
-            content: '❌ Notification not found.',
+            content: '❌ Scheduled reminder not found.',
             ephemeral: true
         });
         return;
     }
 
-    // Pause notification
-    await notificationManager.updateNotification(notificationId, { status: 'paused' });
+    const modal = new ModalBuilder()
+        .setCustomId(`edit_scheduled_modal_${scheduledId}`)
+        .setTitle('Edit scheduled reminder');
 
-    // Update board embed
-    const updatedNotification = notificationManager.getNotification(notificationId);
-    await boardManager.updateEmbed(updatedNotification);
+    const firstTriggerDate = new Date(scheduled.firstTrigger);
+    const formattedDate = `${firstTriggerDate.getFullYear()}-${String(firstTriggerDate.getMonth() + 1).padStart(2, '0')}-${String(firstTriggerDate.getDate()).padStart(2, '0')} ${String(firstTriggerDate.getHours()).padStart(2, '0')}:${String(firstTriggerDate.getMinutes()).padStart(2, '0')}`;
 
-    await interaction.reply({
-        content: `⏸️ Notification **${notificationId}** paused.`,
-        ephemeral: true
-    });
+    const firstTriggerInput = new TextInputBuilder()
+        .setCustomId('firstTrigger')
+        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(formattedDate)
+        .setRequired(true);
 
-    logger.success(`Paused notification ${notificationId}`);
+    const intervalInput = new TextInputBuilder()
+        .setCustomId('interval')
+        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(scheduled.interval)
+        .setRequired(true)
+        .setMaxLength(10);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(firstTriggerInput),
+        new ActionRowBuilder().addComponents(intervalInput)
+    );
+
+    await interaction.showModal(modal);
 }
 
-// Handle notification resume button
-async function handleNotificationResume(interaction, sharedState) {
-    const { logger, notificationManager, boardManager } = sharedState;
+async function handleBoardScheduledDelete(interaction, sharedState) {
+    const scheduledId = interaction.customId.replace('scheduled_delete_', '');
 
-    // Extract notification ID from customId
-    const notificationId = interaction.customId.replace('notification_resume_', '');
-    const notification = notificationManager.getNotification(notificationId);
-
-    if (!notification) {
-        await interaction.reply({
-            content: '❌ Notification not found.',
-            ephemeral: true
-        });
-        return;
-    }
-
-    // Resume notification
-    await notificationManager.updateNotification(notificationId, { status: 'active' });
-
-    // Update board embed
-    const updatedNotification = notificationManager.getNotification(notificationId);
-    await boardManager.updateEmbed(updatedNotification);
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`confirm_delete_scheduled_${scheduledId}`)
+                .setLabel('Yes, delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('🗑️'),
+            new ButtonBuilder()
+                .setCustomId(`cancel_delete_${scheduledId}`)
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary)
+        );
 
     await interaction.reply({
-        content: `▶️ Notification **${notificationId}** resumed.`,
+        content: '⚠️ **Are you sure you want to delete this scheduled reminder?**',
+        components: [row],
         ephemeral: true
     });
-
-    logger.success(`Resumed notification ${notificationId}`);
-}
-
-// Handle notification delete button
-async function handleNotificationDelete(interaction, sharedState) {
-    const { logger, notificationManager, boardManager } = sharedState;
-
-    // Extract notification ID from customId
-    const notificationId = interaction.customId.replace('notification_delete_', '');
-    const notification = notificationManager.getNotification(notificationId);
-
-    if (!notification) {
-        await interaction.reply({
-            content: '❌ Notification not found.',
-            ephemeral: true
-        });
-        return;
-    }
-
-    // Delete from board
-    await boardManager.deleteEmbed(notification);
-
-    // Delete notification
-    await notificationManager.deleteNotification(notificationId);
-
-    await interaction.reply({
-        content: `🗑️ Notification **${notificationId}** deleted.`,
-        ephemeral: true
-    });
-
-    logger.success(`Deleted notification ${notificationId}`);
 }
 
 module.exports = {

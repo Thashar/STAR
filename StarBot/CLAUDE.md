@@ -1,19 +1,20 @@
-# StarBot - Notifications Management System
+# StarBot - Template-Based Notifications System
 
 **Bot:** StarBot ⭐
 **Color:** Yellow
-**Language:** English
+**Language:** English (ALL UI, logs, notifications in English)
 **Last Updated:** March 2026
+
+> **Note:** This bot is fully English - all user interface, logs, notifications, and messages are in English only.
 
 ---
 
 ## 📋 Overview
 
-StarBot is a comprehensive notification management system for Discord servers. It provides:
-- **One-time reminders** - Trigger at a specific date/time
-- **Recurring reminders** - Daily or weekly schedules
-- **Event notifications** - Multi-stage notifications (24h before, 1h before, at start)
-- **Live notifications board** - All active notifications displayed on a dedicated channel with Discord timestamps
+StarBot is a comprehensive template-based notification management system for Discord servers. It provides:
+- **Notification templates** - Create reusable Text or Embed templates
+- **Scheduled reminders** - Schedule templates with flexible intervals (1s to 28d)
+- **Live notifications board** - All active scheduled reminders displayed on a dedicated channel
 - **Auto-updating embeds** - Notifications update every minute showing time remaining
 
 ---
@@ -24,15 +25,15 @@ StarBot is a comprehensive notification management system for Discord servers. I
 StarBot/
 ├── config/
 │   ├── config.js          # Bot configuration (token, channels, categories)
-│   └── messages.js        # All text messages and errors (English)
+│   └── messages.js        # All text messages and errors
 ├── handlers/
-│   └── interactionHandlers.js  # Slash commands handling
+│   └── interactionHandlers.js  # Slash commands + interaction handling
 ├── services/
-│   ├── notificationManager.js  # CRUD operations for notifications
+│   ├── notificationManager.js  # Templates + Scheduled CRUD operations
 │   ├── boardManager.js         # Manages embeds on notifications board
 │   └── scheduler.js            # Checks and triggers notifications
 ├── data/
-│   └── notifications.json      # Persistent storage
+│   └── notifications.json      # Persistent storage (templates + scheduled)
 ├── commands.js            # Slash command definitions
 ├── deploy-commands.js     # Deploy commands to Discord
 └── index.js               # Main bot file
@@ -53,135 +54,296 @@ STARBOT_NOTIFICATIONS_BOARD_CHANNEL=channel_id  # Channel where all active notif
 
 ## 🎯 Features
 
-### 1. One-Time Reminders
+### New System Architecture
 
-Create a reminder that triggers once at a specific time.
+The system is built on **two main concepts**:
 
-**Command:**
-```
-/reminder
-  time: "2024-12-31 20:00" or "2h" or "30m"
-  message: "Meeting with team"
-  channel: #general (optional, default: current channel)
-  role: @Members (optional)
-  category: BOSS_EVENTS/DAILY_REMINDERS/ADMIN/COMMUNITY/CUSTOM
-```
-
-**Board Display:**
-- Embed created on notifications board channel
-- Shows trigger time with Discord timestamp: `<t:timestamp:F>` and relative time `<t:timestamp:R>`
-- Auto-updates every minute
-- Deleted from board after triggering
-
-### 2. Recurring Reminders
-
-Create a reminder that repeats daily or weekly.
-
-**Command:**
-```
-/recurring
-  time: "20:00" (HH:MM format)
-  frequency: daily or weekly
-  message: "Time for daily login! 🎯"
-  channel: #announcements (optional)
-  role: @Members (optional)
-  days: "0,1,2" (optional, for weekly - 0=Sun, 1=Mon, etc.)
-  category: DAILY_REMINDERS (optional)
-```
-
-**Board Display:**
-- Shows next trigger time with Discord timestamp
-- Shows frequency (Daily at 20:00, Weekly on Mon,Wed,Fri at 20:00)
-- Never deleted - stays on board and updates after each trigger
-
-### 3. Event Notifications
-
-Create an event with multi-stage notifications.
-
-**Command:**
-```
-/event
-  name: "Raid Boss - Ender Dragon"
-  time: "2024-12-31 21:00"
-  message: "Event description"
-  channel: #events (optional)
-  role: @Raiders (optional)
-  notifications: "24,1,0" (optional, hours before event - default: 24h, 1h, at start)
-  category: BOSS_EVENTS (optional)
-```
-
-**Board Display:**
-- Shows event time with Discord timestamp
-- Lists all notification stages:
-  - ✅ = Sent
-  - ⏳ = Pending
-  - Shows when each stage triggers (relative time)
-- Deleted from board after all stages complete
-
-### 4. Notifications Board
-
-**Dedicated channel** where ALL active notifications are displayed as embeds:
-- Each notification = 1 embed
-- Auto-updates every 1 minute
-- Uses Discord timestamps (auto-updates in user's timezone)
-- Shows all details: message, channel, roles to ping, trigger time, category, status
-
-**Board Features:**
-- Live countdown for all notifications
-- Color-coded by category
-- Status indicators (Active, Paused, Completed)
-- Notification ID for management
-
-### 5. Notification Management
-
-**List your notifications:**
-```
-/notifications [filter: all/mine/active]
-```
-
-**Delete notification:**
-```
-/delete-notification id: rem_1
-```
-- Deletes from storage and board
-- Only creator or admin can delete
-
-**Pause notification:**
-```
-/pause-notification id: rec_2
-```
-- Status changes to "Paused"
-- Won't trigger until resumed
-- Embed updates to show paused status
-
-**Resume notification:**
-```
-/resume-notification id: rec_2
-```
-- Status changes back to "Active"
-- Continues normal operation
-
-**Refresh board (Admin only):**
-```
-/refresh-board
-```
-- Syncs all notifications to board
-- Recreates missing embeds
-- Useful after bot restart
+1. **Templates** - Reusable notification content (Text or Embed)
+2. **Scheduled** - Instances of templates with timing, channels, and role pings
 
 ---
 
-## 📊 Categories
+### 1. Create Notification Templates (`/new-reminder`)
 
-Notifications can be categorized:
+Create reusable templates for notifications.
 
-| Category | Emoji | Color | Use Case |
-|----------|-------|-------|----------|
-| BOSS_EVENTS | ⚔️ | Red | Boss raids, PvP events |
-| DAILY_REMINDERS | 🎯 | Green | Daily login, dailies |
-| ADMIN | 🛡️ | Blue | Admin meetings, moderation |
-| COMMUNITY | 🎉 | Yellow | Community events, parties |
-| CUSTOM | ⭐ | Magenta | Custom notifications |
+**Command:**
+```
+/new-reminder
+```
+
+**Flow:**
+1. Choose type: **Text** or **Embed**
+2. Fill modal:
+   - **Text**: Name + text content
+   - **Embed**: Name + embed title + description + icon URL (optional) + image URL (optional)
+3. Preview appears with:
+   - ✅ **Zatwierdź** - Save template
+   - ❌ **Odrzuć** - Cancel
+   - ✏️ **Edytuj** - Edit values
+
+**Result:**
+- Template saved to database with ID (e.g., `tpl_1`)
+- Ready to be scheduled with `/set-reminder`
+
+**Example Templates:**
+- **Text**: "Boss spawns in 1 hour! Get ready!"
+- **Embed**: Rich notification with title, description, icon, and image
+
+---
+
+### 2. Schedule Reminders (`/set-reminder`)
+
+Schedule a template to be sent repeatedly.
+
+**Command:**
+```
+/set-reminder
+```
+
+**Flow:**
+1. Select template from list (with pagination if >25 templates)
+2. Fill modal:
+   - **First trigger**: `YYYY-MM-DD HH:MM` (e.g., "2026-03-20 10:00")
+   - **Interval**: `1s`, `1m`, `1h`, `1d` (max 28d)
+     - Examples: `5m` = every 5 minutes, `1h` = every hour, `1d` = every day
+3. Select channel from dropdown
+4. Select roles to ping (optional, multi-select up to 10)
+5. Preview appears with all data + final message preview
+6. Confirm to create scheduled reminder
+
+**Result:**
+- Scheduled reminder created with ID (e.g., `sch_1`)
+- Appears on notifications board
+- Triggers automatically at intervals
+
+**Example:**
+```
+Template: "Boss Reminder" (Text)
+First trigger: 2026-03-20 10:00
+Interval: 1d (every day)
+Channel: #raids
+Roles: @Raiders
+→ Sends notification every day at 10:00
+```
+
+---
+
+### 3. Edit/Delete Reminders (`/edit-reminder`)
+
+Manage templates and scheduled reminders.
+
+**Command:**
+```
+/edit-reminder
+```
+
+**Flow:**
+1. Choose type:
+   - **Template** - Edit/delete templates
+   - **Scheduled** (with ⏰ prefix) - Edit/delete scheduled reminders
+2. Select from list (with pagination)
+3. Preview appears with:
+   - ✏️ **Edytuj** - Edit values (modal)
+   - 🗑️ **Usuń** - Delete (confirmation)
+
+**Template Actions:**
+- **Edit**: Change name, text/embed content
+- **Delete**: Removes template + ALL scheduled reminders using it
+
+**Scheduled Actions:**
+- **Edit**: Change first trigger, interval
+- **Delete**: Removes scheduled reminder only
+
+---
+
+### 4. Notifications Board
+
+**Dedicated channel** where ALL scheduled reminders are displayed as embeds:
+
+**Board Features:**
+- Each scheduled reminder = 1 embed
+- Auto-updates every 1 minute
+- Shows:
+  - Template name and type (Text/Embed)
+  - Next trigger time (Discord timestamp with relative time)
+  - Interval (formatted: "1 dzień", "5 godzin")
+  - Channel
+  - Roles to ping
+  - Status (Active/Paused)
+  - Preview of message content
+
+**Embed Buttons:**
+- ⏸️ **Wstrzymaj** / ▶️ **Wznów** - Pause/Resume
+- ✏️ **Edytuj** - Edit timing
+- 🗑️ **Usuń** - Delete
+
+**Control Panel:**
+- At bottom of board channel
+- Explains how to use the system
+
+---
+
+## 🔄 How It Works
+
+### Architecture
+
+**3 Main Services:**
+
+1. **NotificationManager** (`services/notificationManager.js`)
+   - Manages templates (create, read, update, delete)
+   - Manages scheduled reminders (create, read, update, delete)
+   - Stores data in `data/notifications.json`
+   - Calculates next trigger times
+   - Validates intervals (max 28 days)
+
+2. **BoardManager** (`services/boardManager.js`)
+   - Creates/updates/deletes embeds on notifications board
+   - Updates all embeds every minute
+   - Syncs scheduled reminders to board on startup
+   - Manages control panel at bottom of board
+
+3. **Scheduler** (`services/scheduler.js`)
+   - Checks every 30 seconds for scheduled reminders to trigger
+   - Fetches template and builds message
+   - Sends Text or Embed notification to configured channel
+   - Updates next trigger time
+   - Updates board embed
+
+### Data Structure
+
+**File:** `data/notifications.json`
+
+```json
+{
+  "templates": [
+    {
+      "id": "tpl_1",
+      "name": "Boss Reminder",
+      "type": "text",
+      "creator": "userId",
+      "createdAt": "ISO string",
+      "text": "Boss spawns soon!"
+    },
+    {
+      "id": "tpl_2",
+      "name": "Event Announcement",
+      "type": "embed",
+      "creator": "userId",
+      "createdAt": "ISO string",
+      "embedTitle": "Community Event",
+      "embedDescription": "Join us for...",
+      "embedIcon": "https://...",
+      "embedImage": "https://..."
+    }
+  ],
+  "scheduled": [
+    {
+      "id": "sch_1",
+      "templateId": "tpl_1",
+      "creator": "userId",
+      "createdAt": "ISO string",
+      "firstTrigger": "ISO string",
+      "interval": "1d",
+      "intervalMs": 86400000,
+      "nextTrigger": "ISO string",
+      "channelId": "channelId",
+      "roles": ["roleId1", "roleId2"],
+      "status": "active",
+      "boardMessageId": "messageId"
+    }
+  ],
+  "nextId": 3
+}
+```
+
+### Data Flow
+
+**Creating a scheduled reminder:**
+1. User runs `/new-reminder` → creates template
+2. User runs `/set-reminder` → selects template, sets timing
+3. NotificationManager creates scheduled reminder in storage
+4. BoardManager creates embed on board channel
+5. User gets confirmation
+
+**Triggering a notification:**
+1. Scheduler checks every 30 seconds
+2. Finds scheduled reminder(s) ready to trigger
+3. Fetches template from NotificationManager
+4. Builds message (Text or Embed based on template type)
+5. Sends to configured channel with role pings
+6. Updates next trigger time
+7. BoardManager updates embed
+
+---
+
+## 📝 Examples
+
+### Example 1: Daily Boss Reminder
+
+**Step 1: Create Template**
+```
+/new-reminder
+→ Type: Text
+→ Name: "Boss Reminder"
+→ Text: "Boss spawns in 1 hour! Get ready @everyone!"
+→ Approve
+→ Result: Template tpl_1 created
+```
+
+**Step 2: Schedule It**
+```
+/set-reminder
+→ Select: "Boss Reminder"
+→ First trigger: 2026-03-20 10:00
+→ Interval: 1d
+→ Channel: #raids
+→ Roles: @Raiders
+→ Result: Scheduled sch_1 created
+→ Sends every day at 10:00
+```
+
+### Example 2: Hourly Event Reminder with Embed
+
+**Step 1: Create Template**
+```
+/new-reminder
+→ Type: Embed
+→ Name: "Event Announcement"
+→ Title: "Community Event Starting Soon!"
+→ Description: "Join us in the main hall!"
+→ Icon: https://...
+→ Image: https://...
+→ Approve
+→ Result: Template tpl_2 created
+```
+
+**Step 2: Schedule It**
+```
+/set-reminder
+→ Select: "Event Announcement"
+→ First trigger: 2026-03-20 15:00
+→ Interval: 1h
+→ Channel: #events
+→ Roles: @Members, @VIP
+→ Result: Scheduled sch_2 created
+→ Sends every hour starting at 15:00
+```
+
+---
+
+## ⚙️ Configuration
+
+**File:** `config/config.js`
+
+```javascript
+{
+    notificationsBoardChannelId: process.env.STARBOT_NOTIFICATIONS_BOARD_CHANNEL,
+    boardUpdateInterval: 60000, // 1 minute
+    maxNotificationsPerUser: 50,
+    maxTotalNotifications: 200
+}
+```
 
 ---
 
@@ -220,124 +382,6 @@ npm start
 
 ---
 
-## ⚙️ Configuration
-
-**File:** `config/config.js`
-
-```javascript
-{
-    notificationsBoardChannelId: process.env.STARBOT_NOTIFICATIONS_BOARD_CHANNEL,
-    timezone: 'Europe/Warsaw',
-    boardUpdateInterval: 60000, // 1 minute
-    maxNotificationsPerUser: 50,
-    maxTotalNotifications: 200,
-    categories: {
-        BOSS_EVENTS: { emoji: '⚔️', color: 0xFF0000 },
-        // ... more categories
-    }
-}
-```
-
----
-
-## 🔄 How It Works
-
-### Architecture
-
-**3 Main Services:**
-
-1. **NotificationManager** (`services/notificationManager.js`)
-   - CRUD operations for notifications
-   - Stores data in `data/notifications.json`
-   - Calculates next trigger times for recurring reminders
-
-2. **BoardManager** (`services/boardManager.js`)
-   - Creates/updates/deletes embeds on notifications board
-   - Updates all embeds every minute
-   - Syncs notifications to board on startup
-
-3. **Scheduler** (`services/scheduler.js`)
-   - Checks every minute for notifications to trigger
-   - Sends notifications to configured channels
-   - Updates next trigger time for recurring reminders
-   - Marks one-time reminders as completed
-
-### Data Flow
-
-**Creating a notification:**
-1. User runs `/reminder` command
-2. Handler parses input and validates
-3. NotificationManager creates notification in storage
-4. BoardManager creates embed on board channel
-5. User gets confirmation with notification ID
-
-**Triggering a notification:**
-1. Scheduler checks every minute
-2. Finds notification(s) ready to trigger
-3. Sends message to configured channel with role pings
-4. For one-time: marks as completed, BoardManager deletes embed
-5. For recurring: calculates next trigger, BoardManager updates embed
-6. For events: marks stage as sent, BoardManager updates embed
-
----
-
-## 📝 Examples
-
-### Example 1: Boss Raid Reminder (One-time)
-
-```
-/reminder
-  time: 2h
-  message: Boss raid in 2 hours! Get ready!
-  channel: #raids
-  role: @Raiders
-  category: BOSS_EVENTS
-```
-
-**Result:**
-- Creates embed on notifications board showing "Triggers in 2 hours"
-- After 2 hours: sends message to #raids pinging @Raiders
-- Embed deleted from board
-
-### Example 2: Daily Login Reminder (Recurring)
-
-```
-/recurring
-  time: 20:00
-  frequency: daily
-  message: Time for daily login! Don't forget your rewards 🎯
-  channel: #announcements
-  role: @Members
-  category: DAILY_REMINDERS
-```
-
-**Result:**
-- Creates embed showing "Next trigger: Today at 20:00" (or tomorrow if past 20:00)
-- Every day at 20:00: sends message to #announcements
-- Embed updates to show next trigger time
-
-### Example 3: Event with Multi-Stage Notifications
-
-```
-/event
-  name: Raid Boss - Ender Dragon
-  time: 2024-12-31 21:00
-  message: Epic raid event! Join us in The End!
-  channel: #events
-  role: @Raiders
-  notifications: 24,1,0
-  category: BOSS_EVENTS
-```
-
-**Result:**
-- Creates embed showing event time and 3 stages (24h, 1h, at start)
-- 24h before: sends reminder to #events
-- 1h before: sends reminder to #events
-- At 21:00: sends "EVENT STARTING NOW!" to #events
-- After all stages: embed deleted from board
-
----
-
 ## 🐛 Troubleshooting
 
 **Bot doesn't start:**
@@ -353,10 +397,9 @@ npm start
 **Notifications board not updating:**
 - Check bot has permission to read/send messages in notifications board channel
 - Check `boardUpdateInterval` in config (default 1 minute)
-- Run `/refresh-board` (admin only) to force sync
 
 **Notifications not triggering:**
-- Check scheduler is running (logs show "Scheduler initialized")
+- Check scheduler is running (logs show "Scheduler initialized - checking every 30 seconds")
 - Check notification status is "Active" not "Paused"
 - Check trigger time is in the future
 
@@ -364,47 +407,43 @@ npm start
 
 ## 📚 Code Reference
 
-**Creating a notification programmatically:**
+**Creating a template programmatically:**
 
 ```javascript
-// One-time reminder
-const reminder = await notificationManager.createReminder(
+// Text template
+const textTemplate = await notificationManager.createTemplate(
     userId,
-    new Date('2024-12-31 20:00'),
-    'Meeting reminder',
-    channelId,
-    [roleId],
-    [],
-    'ADMIN'
+    'Template Name',
+    'text',
+    { text: 'Notification message' }
 );
-await boardManager.createEmbed(reminder);
 
-// Recurring reminder
-const recurring = await notificationManager.createRecurring(
+// Embed template
+const embedTemplate = await notificationManager.createTemplate(
     userId,
-    '20:00',
-    'daily',
-    'Daily reminder',
-    channelId,
-    [roleId],
-    [],
-    'DAILY_REMINDERS'
+    'Template Name',
+    'embed',
+    {
+        embedTitle: 'Title',
+        embedDescription: 'Description',
+        embedIcon: 'https://...',
+        embedImage: 'https://...'
+    }
 );
-await boardManager.createEmbed(recurring);
+```
 
-// Event
-const event = await notificationManager.createEvent(
+**Creating a scheduled reminder programmatically:**
+
+```javascript
+const scheduled = await notificationManager.createScheduled(
     userId,
-    'Event Name',
-    new Date('2024-12-31 21:00'),
-    'Event description',
-    channelId,
-    [roleId],
-    [],
-    'BOSS_EVENTS',
-    [-86400000, -3600000, 0] // 24h, 1h, at start
+    'tpl_1', // template ID
+    '2026-03-20T10:00:00.000Z', // first trigger
+    '1d', // interval
+    'channelId',
+    ['roleId1', 'roleId2'] // roles
 );
-await boardManager.createEmbed(event);
+await boardManager.createEmbed(scheduled);
 ```
 
 ---
@@ -416,8 +455,24 @@ await boardManager.createEmbed(event);
 - [ ] Run `npm install`
 - [ ] Run `npm run deploy-commands`
 - [ ] Start bot with `npm run starbot`
-- [ ] Test with `/reminder time:5m message:Test`
+- [ ] Test with `/new-reminder` to create template
+- [ ] Test with `/set-reminder` to schedule it
 - [ ] Verify embed appears on notifications board
-- [ ] Wait 5 minutes and verify trigger works
-- [ ] Test `/notifications` command
-- [ ] Test `/pause-notification` and `/resume-notification`
+- [ ] Wait for trigger and verify it works
+- [ ] Test `/edit-reminder` to edit/delete
+
+---
+
+## 🎯 Key Differences from Old System
+
+**Old System:**
+- 3 types: one-time, recurring, event
+- Created directly with full params in one command
+- `/reminder`, `/recurring`, `/event` commands
+
+**New System:**
+- 2-step: Create template → Schedule it
+- Reusable templates (create once, schedule many times)
+- `/new-reminder`, `/set-reminder`, `/edit-reminder` commands
+- More flexible intervals (1s to 28d) vs. fixed daily/weekly
+- Cleaner separation: content (template) vs. timing (scheduled)

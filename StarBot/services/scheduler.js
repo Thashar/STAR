@@ -1,3 +1,5 @@
+const { EmbedBuilder } = require('discord.js');
+
 class Scheduler {
     constructor(client, config, logger, notificationManager, boardManager) {
         this.client = client;
@@ -31,155 +33,79 @@ class Scheduler {
     async checkNotifications() {
         const now = new Date();
 
-        // Check one-time reminders
-        await this.checkReminders(now);
-
-        // Check recurring reminders
-        await this.checkRecurring(now);
-
-        // Check event notifications
-        await this.checkEvents(now);
+        // Check scheduled reminders
+        await this.checkScheduled(now);
     }
 
-    async checkReminders(now) {
-        const reminders = this.notificationManager.data.reminders.filter(
-            r => r.status === 'active'
-        );
+    async checkScheduled(now) {
+        const scheduled = this.notificationManager.getActiveScheduled();
 
-        for (const reminder of reminders) {
-            const triggerTime = new Date(reminder.triggerAt);
-
-            if (now >= triggerTime) {
-                await this.triggerNotification(reminder);
-
-                // Mark as completed and delete from board
-                await this.notificationManager.completeNotification(reminder.id);
-                await this.boardManager.deleteEmbed(reminder);
-
-                this.logger.info(`Triggered one-time reminder: ${reminder.id}`);
-            }
-        }
-    }
-
-    async checkRecurring(now) {
-        const recurring = this.notificationManager.data.recurring.filter(
-            r => r.status === 'active'
-        );
-
-        for (const rec of recurring) {
-            const nextTriggerTime = new Date(rec.nextTrigger);
+        for (const sch of scheduled) {
+            const nextTriggerTime = new Date(sch.nextTrigger);
 
             if (now >= nextTriggerTime) {
-                await this.triggerNotification(rec);
+                await this.triggerScheduled(sch);
 
-                // Calculate next trigger
-                await this.notificationManager.updateNextTrigger(rec.id);
+                // Update next trigger
+                await this.notificationManager.updateNextTrigger(sch.id);
 
                 // Update board embed
-                const updatedNotification = this.notificationManager.getNotification(rec.id);
-                await this.boardManager.updateEmbed(updatedNotification);
+                const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
+                await this.boardManager.updateEmbed(updatedScheduled);
 
-                this.logger.info(`Triggered recurring reminder: ${rec.id}`);
+                this.logger.info(`Triggered scheduled reminder: ${sch.id}`);
             }
         }
     }
 
-    async checkEvents(now) {
-        const events = this.notificationManager.data.events.filter(
-            e => e.status === 'active'
-        );
-
-        for (const event of events) {
-            let allSent = true;
-            let anyTriggered = false;
-
-            for (const notification of event.notifications) {
-                if (!notification.sent) {
-                    const triggerTime = new Date(notification.triggerAt);
-
-                    if (now >= triggerTime) {
-                        await this.triggerNotification(event, notification);
-                        notification.sent = true;
-                        anyTriggered = true;
-                        this.logger.info(`Triggered event notification: ${event.id} (offset: ${notification.offset})`);
-                    } else {
-                        allSent = false;
-                    }
-                } else if (!notification.sent) {
-                    allSent = false;
-                }
-            }
-
-            if (anyTriggered) {
-                // Update the event in storage
-                await this.notificationManager.updateNotification(event.id, {
-                    notifications: event.notifications
-                });
-
-                // Update board embed
-                const updatedEvent = this.notificationManager.getNotification(event.id);
-                await this.boardManager.updateEmbed(updatedEvent);
-            }
-
-            // If all notifications sent, mark event as completed
-            if (allSent && event.notifications.every(n => n.sent)) {
-                await this.notificationManager.completeNotification(event.id);
-                await this.boardManager.deleteEmbed(event);
-                this.logger.info(`Completed event: ${event.id}`);
-            }
-        }
-    }
-
-    async triggerNotification(notification, eventNotification = null) {
+    async triggerScheduled(scheduled) {
         try {
-            const channel = await this.client.channels.fetch(notification.channel);
+            const template = this.notificationManager.getTemplate(scheduled.templateId);
+            if (!template) {
+                this.logger.error(`Template not found for scheduled: ${scheduled.id} (templateId: ${scheduled.templateId})`);
+                return;
+            }
+
+            const channel = await this.client.channels.fetch(scheduled.channelId);
             if (!channel) {
-                this.logger.error(`Channel not found: ${notification.channel}`);
+                this.logger.error(`Channel not found: ${scheduled.channelId}`);
                 return;
             }
 
             let content = '';
+            const embeds = [];
 
             // Add role pings
-            if (notification.roles && notification.roles.length > 0) {
-                content += notification.roles.map(r => `<@&${r}>`).join(' ') + ' ';
+            if (scheduled.roles && scheduled.roles.length > 0) {
+                content += scheduled.roles.map(r => `<@&${r}>`).join(' ') + '\n\n';
             }
 
-            // Add user pings
-            if (notification.users && notification.users.length > 0) {
-                content += notification.users.map(u => `<@${u}>`).join(' ') + ' ';
-            }
+            // Build message based on template type
+            if (template.type === 'text') {
+                content += template.text;
+            } else if (template.type === 'embed') {
+                const embed = new EmbedBuilder()
+                    .setTitle(template.embedTitle)
+                    .setDescription(template.embedDescription)
+                    .setColor(0x5865F2)
+                    .setTimestamp();
 
-            content += '\n';
-
-            // Message content
-            if (notification.type === 'event' && eventNotification) {
-                const eventTime = new Date(notification.eventTime);
-                const eventTimestamp = Math.floor(eventTime.getTime() / 1000);
-
-                let stageText = '';
-                const offsetHours = Math.floor(eventNotification.offset / (1000 * 60 * 60));
-                if (offsetHours === 0) {
-                    stageText = '🎯 **EVENT STARTING NOW!**';
-                } else if (offsetHours < 0) {
-                    stageText = `⏰ **Reminder: ${Math.abs(offsetHours)} hour(s) until event**`;
+                if (template.embedIcon) {
+                    embed.setThumbnail(template.embedIcon);
                 }
 
-                content += `📅 **${notification.name}**\n`;
-                content += `${stageText}\n`;
-                content += `Event time: <t:${eventTimestamp}:F> (<t:${eventTimestamp}:R>)\n\n`;
-                content += notification.message || '';
-            } else if (notification.type === 'one-time') {
-                content += `⏰ **REMINDER**\n${notification.message}`;
-            } else {
-                content += `🔄 **RECURRING REMINDER**\n${notification.message}`;
+                if (template.embedImage) {
+                    embed.setImage(template.embedImage);
+                }
+
+                embeds.push(embed);
             }
 
-            await channel.send({ content });
+            await channel.send({ content, embeds });
 
-            this.logger.success(`Notification sent to channel ${notification.channel}`);
+            this.logger.success(`Notification sent to channel ${scheduled.channelId} (scheduled: ${scheduled.id})`);
         } catch (error) {
-            this.logger.error(`Failed to trigger notification ${notification.id}:`, error);
+            this.logger.error(`Failed to trigger scheduled ${scheduled.id}:`, error);
         }
     }
 }
