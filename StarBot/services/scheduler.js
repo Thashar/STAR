@@ -85,10 +85,13 @@ class Scheduler {
                 content += template.text;
             } else if (template.type === 'embed') {
                 const embed = new EmbedBuilder()
-                    .setTitle(template.embedTitle)
                     .setDescription(template.embedDescription)
                     .setColor(0x5865F2)
                     .setTimestamp();
+
+                if (template.embedTitle) {
+                    embed.setTitle(template.embedTitle);
+                }
 
                 if (template.embedIcon) {
                     embed.setThumbnail(template.embedIcon);

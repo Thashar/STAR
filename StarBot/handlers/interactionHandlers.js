@@ -117,7 +117,7 @@ async function handleSetReminderCommand(interaction, sharedState) {
 
     if (templates.length === 0) {
         await interaction.reply({
-            content: '❌ Brak szablonów przypomnień. Użyj `/new-reminder` aby stworzyć szablon.',
+            content: '❌ No reminder templates found. Use `/new-reminder` to create a template.',
             ephemeral: true
         });
         return;
@@ -145,7 +145,7 @@ async function showTemplateSelectPage(interaction, sharedState, page, totalPages
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId(`template_select_${action}_${page}`)
-        .setPlaceholder(`Select szablon (strona ${page + 1}/${totalPages})`)
+        .setPlaceholder(`Select template (page ${page + 1}/${totalPages})`)
         .addOptions(options);
 
     const rows = [new ActionRowBuilder().addComponents(selectMenu)];
@@ -158,7 +158,7 @@ async function showTemplateSelectPage(interaction, sharedState, page, totalPages
             paginationRow.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`template_page_${action}_${page - 1}`)
-                    .setLabel('◀ Poprzednia')
+                    .setLabel('◀ Previous')
                     .setStyle(ButtonStyle.Secondary)
             );
         }
@@ -166,7 +166,7 @@ async function showTemplateSelectPage(interaction, sharedState, page, totalPages
         paginationRow.addComponents(
             new ButtonBuilder()
                 .setCustomId('page_info')
-                .setLabel(`Strona ${page + 1}/${totalPages}`)
+                .setLabel(`Page ${page + 1}/${totalPages}`)
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(true)
         );
@@ -175,7 +175,7 @@ async function showTemplateSelectPage(interaction, sharedState, page, totalPages
             paginationRow.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`template_page_${action}_${page + 1}`)
-                    .setLabel('Następna ▶')
+                    .setLabel('Next ▶')
                     .setStyle(ButtonStyle.Secondary)
             );
         }
@@ -184,8 +184,8 @@ async function showTemplateSelectPage(interaction, sharedState, page, totalPages
     }
 
     const content = action === 'set'
-        ? `**Select szablon do zaplanowania** (${templates.length} szablonów)`
-        : `**Select szablon do edycji** (${templates.length} szablonów)`;
+        ? `**Select template to schedule** (${templates.length} templates)`
+        : `**Select template to edit** (${templates.length} templates)`;
 
     if (interaction.replied || interaction.deferred) {
         await interaction.editReply({
@@ -437,8 +437,8 @@ async function handleNewReminderTypeSelect(interaction, sharedState) {
             .setCustomId('embedTitle')
             .setLabel('Embed title')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Embed title')
-            .setRequired(true)
+            .setPlaceholder('Embed title (optional)')
+            .setRequired(false)
             .setMaxLength(256);
 
         const descInput = new TextInputBuilder()
@@ -490,20 +490,30 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
     }
 
     // Pokaż modal do ustawienia harmonogramu
+    const now = new Date();
+    const currentTime = now.toLocaleString('sv-SE', {
+        timeZone: 'Europe/Warsaw',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).replace(',', '');
+
     const modal = new ModalBuilder()
         .setCustomId(`set_reminder_modal_${templateId}`)
-        .setTitle('Ustaw harmonogram');
+        .setTitle('Set schedule');
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setLabel(`First trigger (current: ${currentTime})`)
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('2026-03-20 10:00')
+        .setPlaceholder('YYYY-MM-DD HH:MM')
         .setRequired(true);
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('1d (max 28d)')
         .setRequired(true)
@@ -691,7 +701,7 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTrigger = new Date(firstTriggerStr);
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
-                    content: '❌ Invalid date format. Użyj: YYYY-MM-DD HH:MM (np. 2026-03-20 10:00)'
+                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)'
                 });
                 return;
             }
@@ -706,7 +716,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Użyj: 1s, 1m, 1h, 1d (max 28d)'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d)'
                 });
                 return;
             }
@@ -733,7 +743,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Show channel select
             const channelSelect = new ChannelSelectMenuBuilder()
                 .setCustomId(`set_reminder_channel_${sessionId}`)
-                .setPlaceholder('Select kanał dla powiadomień')
+                .setPlaceholder('Select channel for reminders')
                 .setChannelTypes([ChannelType.GuildText]);
 
             const row = new ActionRowBuilder().addComponents(channelSelect);
@@ -759,7 +769,7 @@ async function handleModalSubmit(interaction, sharedState) {
 
                 await notificationManager.updateTemplate(templateId, { name, text });
                 await interaction.editReply({
-                    content: `✅ Szablon **${name}** has been updated!`,
+                    content: `✅ Template **${name}** has been updated!`,
                     components: []
                 });
             } else {
@@ -777,7 +787,7 @@ async function handleModalSubmit(interaction, sharedState) {
                     embedImage
                 });
                 await interaction.editReply({
-                    content: `✅ Szablon **${name}** has been updated!`,
+                    content: `✅ Template **${name}** has been updated!`,
                     components: []
                 });
             }
@@ -801,7 +811,7 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTrigger = new Date(firstTriggerStr);
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
-                    content: '❌ Invalid date format. Użyj: YYYY-MM-DD HH:MM'
+                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM'
                 });
                 return;
             }
@@ -809,7 +819,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Użyj: 1s, 1m, 1h, 1d (max 28d)'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d)'
                 });
                 return;
             }
@@ -853,8 +863,8 @@ async function handleModalSubmit(interaction, sharedState) {
 
 async function showTemplatePreview(interaction, data, sessionId) {
     let previewContent = '**Template Preview:**\n\n';
-    previewContent += `📝 **Nazwa:** ${data.name}\n`;
-    previewContent += `📋 **Typ:** ${data.type === 'text' ? 'Text' : 'Embed'}\n\n`;
+    previewContent += `📝 **Name:** ${data.name}\n`;
+    previewContent += `📋 **Type:** ${data.type === 'text' ? 'Text' : 'Embed'}\n\n`;
     previewContent += '**How the reminder will look:**';
 
     const embeds = [];
@@ -862,10 +872,10 @@ async function showTemplatePreview(interaction, data, sessionId) {
         previewContent += `\n\n${data.text}`;
     } else {
         const embed = new EmbedBuilder()
-            .setTitle(data.embedTitle)
             .setDescription(data.embedDescription)
             .setColor(0x5865F2);
 
+        if (data.embedTitle) embed.setTitle(data.embedTitle);
         if (data.embedIcon) embed.setThumbnail(data.embedIcon);
         if (data.embedImage) embed.setImage(data.embedImage);
 
@@ -878,17 +888,17 @@ async function showTemplatePreview(interaction, data, sessionId) {
                 .setCustomId(`template_preview_approve_${sessionId}`)
                 .setLabel('Approve')
                 .setStyle(ButtonStyle.Success)
-                .setEmoji('✅'),
+                .setEmoji('✔️'),
             new ButtonBuilder()
                 .setCustomId(`template_preview_cancel_${sessionId}`)
-                .setLabel('Odrzuć')
+                .setLabel('Cancel')
                 .setStyle(ButtonStyle.Danger)
-                .setEmoji('❌'),
+                .setEmoji('✖️'),
             new ButtonBuilder()
                 .setCustomId(`template_preview_edit_${sessionId}`)
                 .setLabel('Edit')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('✏️')
+                .setEmoji('📝')
         );
 
     await interaction.editReply({
@@ -900,8 +910,8 @@ async function showTemplatePreview(interaction, data, sessionId) {
 
 async function showTemplateEditPreview(interaction, template) {
     let content = '**Edit Template:**\n\n';
-    content += `📝 **Nazwa:** ${template.name}\n`;
-    content += `📋 **Typ:** ${template.type === 'text' ? 'Text' : 'Embed'}\n`;
+    content += `📝 **Name:** ${template.name}\n`;
+    content += `📋 **Type:** ${template.type === 'text' ? 'Text' : 'Embed'}\n`;
     content += `🆔 **ID:** ${template.id}\n\n`;
     content += '**Preview:**';
 
@@ -910,10 +920,10 @@ async function showTemplateEditPreview(interaction, template) {
         content += `\n\n${template.text}`;
     } else {
         const embed = new EmbedBuilder()
-            .setTitle(template.embedTitle)
             .setDescription(template.embedDescription)
             .setColor(0x5865F2);
 
+        if (template.embedTitle) embed.setTitle(template.embedTitle);
         if (template.embedIcon) embed.setThumbnail(template.embedIcon);
         if (template.embedImage) embed.setImage(template.embedImage);
 
@@ -950,7 +960,7 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
 
     let content = '**Zaplanowane przypomnienie:**\n\n';
     content += `⏰ **ID:** ${scheduled.id}\n`;
-    content += `📝 **Szablon:** ${template.name}\n`;
+    content += `📝 **Template:** ${template.name}\n`;
     content += `📅 **Pierwszy trigger:** ${new Date(scheduled.firstTrigger).toLocaleString('pl-PL')}\n`;
     content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
     content += `⏭️ **Następny trigger:** <t:${nextTriggerTimestamp}:F> (<t:${nextTriggerTimestamp}:R>)\n`;
@@ -964,10 +974,10 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
         content += `\n\n${template.text}`;
     } else {
         const embed = new EmbedBuilder()
-            .setTitle(template.embedTitle)
             .setDescription(template.embedDescription)
             .setColor(0x5865F2);
 
+        if (template.embedTitle) embed.setTitle(template.embedTitle);
         if (template.embedIcon) embed.setThumbnail(template.embedIcon);
         if (template.embedImage) embed.setImage(template.embedImage);
 
@@ -1018,7 +1028,7 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
 
         let content = '✅ **Zaplanowane przypomnienie utworzone!**\n\n';
         content += `⏰ **ID:** ${scheduled.id}\n`;
-        content += `📝 **Szablon:** ${template.name}\n`;
+        content += `📝 **Template:** ${template.name}\n`;
         content += `📅 **Pierwszy trigger:** <t:${nextTriggerTimestamp}:F>\n`;
         content += `🔄 **Interwał:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
         content += `📍 **Kanał:** <#${userState.channelId}>\n`;
@@ -1084,7 +1094,7 @@ async function handleTemplatePreviewApprove(interaction, sharedState) {
         userStates.delete(interaction.user.id);
 
         await interaction.editReply({
-            content: `✅ Szablon **${template.name}** has been created!\n🆔 ID: ${template.id}\n\nUżyj \`/set-reminder\` aby zaplanować przypomnienia.`,
+            content: `✅ Template **${template.name}** has been created!\n🆔 ID: ${template.id}\n\nUse \`/set-reminder\` to schedule reminders.`,
             embeds: [],
             components: []
         });
@@ -1093,7 +1103,7 @@ async function handleTemplatePreviewApprove(interaction, sharedState) {
     } catch (error) {
         logger.error('Error creating template:', error);
         await interaction.editReply({
-            content: '❌ Error tworzenia szablonu.',
+            content: '❌ Error creating template.',
             embeds: [],
             components: []
         });
@@ -1107,7 +1117,7 @@ async function handleTemplatePreviewCancel(interaction, sharedState) {
     userStates.delete(interaction.user.id);
 
     await interaction.update({
-        content: '❌ Cancelled tworzenie szablonu.',
+        content: '❌ Template creation cancelled.',
         embeds: [],
         components: []
     });
@@ -1172,8 +1182,8 @@ async function handleTemplatePreviewEdit(interaction, sharedState) {
             .setCustomId('embedTitle')
             .setLabel('Embed title')
             .setStyle(TextInputStyle.Short)
-            .setValue(userState.embedTitle)
-            .setRequired(true)
+            .setValue(userState.embedTitle || '')
+            .setRequired(false)
             .setMaxLength(256);
 
         const descInput = new TextInputBuilder()
@@ -1241,7 +1251,7 @@ async function handleEditTemplatesButton(interaction, sharedState) {
 
     if (templates.length === 0) {
         await interaction.update({
-            content: '❌ Brak szablonów. Użyj `/new-reminder` aby stworzyć szablon.',
+            content: '❌ No templates found. Use `/new-reminder` to create a template.',
             components: []
         });
         return;
@@ -1260,7 +1270,7 @@ async function handleEditScheduledButton(interaction, sharedState) {
 
     if (scheduled.length === 0) {
         await interaction.update({
-            content: '❌ Brak zaplanowanych przypomnień. Użyj `/set-reminder` aby je utworzyć.',
+            content: '❌ No scheduled reminders found. Use `/set-reminder` to create one.',
             components: []
         });
         return;
@@ -1298,7 +1308,7 @@ async function handleEditScheduledButton(interaction, sharedState) {
             paginationRow.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`scheduled_page_edit_${page - 1}`)
-                    .setLabel('◀ Poprzednia')
+                    .setLabel('◀ Previous')
                     .setStyle(ButtonStyle.Secondary)
             );
         }
@@ -1306,7 +1316,7 @@ async function handleEditScheduledButton(interaction, sharedState) {
         paginationRow.addComponents(
             new ButtonBuilder()
                 .setCustomId('page_info')
-                .setLabel(`Strona ${page + 1}/${totalPages}`)
+                .setLabel(`Page ${page + 1}/${totalPages}`)
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(true)
         );
@@ -1315,7 +1325,7 @@ async function handleEditScheduledButton(interaction, sharedState) {
             paginationRow.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`scheduled_page_edit_${page + 1}`)
-                    .setLabel('Następna ▶')
+                    .setLabel('Next ▶')
                     .setStyle(ButtonStyle.Secondary)
             );
         }
@@ -1401,8 +1411,8 @@ async function handleEditTemplateEdit(interaction, sharedState) {
             .setCustomId('embedTitle')
             .setLabel('Embed title')
             .setStyle(TextInputStyle.Short)
-            .setValue(template.embedTitle)
-            .setRequired(true)
+            .setValue(template.embedTitle || '')
+            .setRequired(false)
             .setMaxLength(256);
 
         const descInput = new TextInputBuilder()
@@ -1485,14 +1495,14 @@ async function handleEditScheduledEdit(interaction, sharedState) {
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
         .setValue(formattedDate)
         .setRequired(true);
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)
@@ -1540,7 +1550,7 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
         await notificationManager.deleteTemplate(templateId);
 
         await interaction.editReply({
-            content: `✅ Szablon **${templateId}** and all associated scheduled reminders have been deleted.`,
+            content: `✅ Template **${templateId}** and all associated scheduled reminders have been deleted.`,
             embeds: [],
             components: []
         });
@@ -1677,14 +1687,14 @@ async function handleBoardScheduledEdit(interaction, sharedState) {
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel('Pierwszy trigger (YYYY-MM-DD HH:MM)')
+        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
         .setValue(formattedDate)
         .setRequired(true);
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
-        .setLabel('Interwał powtarzania (1s, 1m, 1h, 1d)')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d)')
         .setStyle(TextInputStyle.Short)
         .setValue(scheduled.interval)
         .setRequired(true)
