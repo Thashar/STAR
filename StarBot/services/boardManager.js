@@ -428,7 +428,7 @@ class BoardManager {
         }
     }
 
-    // Update existing control panel (lightweight - doesn't search/create)
+    // Update existing control panel (lightweight - NEVER creates new one)
     async updateControlPanel() {
         if (!this.boardChannel) {
             this.logger.error('Board channel not initialized');
@@ -436,26 +436,48 @@ class BoardManager {
         }
 
         try {
+            let panelMessage = null;
+
+            // Try to use known message ID first
             if (this.controlPanelMessageId) {
-                // We know the message ID - just update it
-                const message = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
+                try {
+                    panelMessage = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
+                } catch (error) {
+                    if (error.code === 10008) {
+                        this.logger.warn('Cached control panel message not found, searching channel');
+                        this.controlPanelMessageId = null;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+
+            // If we don't have the message, search for it (but don't create)
+            if (!panelMessage) {
+                const messages = await this.boardChannel.messages.fetch({ limit: 100 });
+                for (const [, message] of messages) {
+                    if (message.author.id === this.client.user.id &&
+                        message.embeds.length > 0 &&
+                        message.embeds[0].title === '📋 Reminders Control Panel') {
+                        panelMessage = message;
+                        this.controlPanelMessageId = message.id;
+                        this.logger.info('Found control panel in channel');
+                        break;
+                    }
+                }
+            }
+
+            // If we found the panel, update it
+            if (panelMessage) {
                 const controlPanel = await this.buildControlPanel();
-                await message.edit(controlPanel);
-                this.logger.info('Control panel updated');
+                await panelMessage.edit(controlPanel);
+                this.logger.success('Control panel updated');
             } else {
-                // Don't know message ID - call ensureControlPanel to find/create it
-                this.logger.warn('Control panel message ID not set, calling ensureControlPanel');
-                await this.ensureControlPanel();
+                // Panel doesn't exist - don't create it, just log warning
+                this.logger.warn('Control panel not found - skipping update (will be created on next bot restart)');
             }
         } catch (error) {
-            // If message not found (10008) or other error, try to ensure it exists
-            if (error.code === 10008) {
-                this.logger.warn('Control panel message not found, recreating');
-                this.controlPanelMessageId = null;
-                await this.ensureControlPanel();
-            } else {
-                this.logger.error('Failed to update control panel:', error);
-            }
+            this.logger.error('Failed to update control panel:', error);
         }
     }
 
