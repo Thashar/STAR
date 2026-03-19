@@ -333,7 +333,26 @@ class BoardManager {
             )
             .setFooter({ text: 'STAR Bot reminder system' });
 
-        return { embeds: [embed], components: [] };
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('board_new_reminder')
+                    .setLabel('New Reminder')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('➕'),
+                new ButtonBuilder()
+                    .setCustomId('board_set_reminder')
+                    .setLabel('Set Reminder')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('⏰'),
+                new ButtonBuilder()
+                    .setCustomId('board_edit_reminder')
+                    .setLabel('Edit Reminder')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('✏️')
+            );
+
+        return { embeds: [embed], components: [row] };
     }
 
     // Build action buttons for scheduled reminder

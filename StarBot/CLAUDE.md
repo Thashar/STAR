@@ -181,6 +181,10 @@ Manage templates and scheduled reminders.
 **Control Panel:**
 - At bottom of board channel
 - Explains how to use the system
+- Three interactive buttons:
+  - ➕ **New Reminder** (gray) - Opens `/new-reminder` flow
+  - ⏰ **Set Reminder** (green) - Opens `/set-reminder` flow
+  - ✏️ **Edit Reminder** (blue) - Opens `/edit-reminder` flow
 
 ---
 

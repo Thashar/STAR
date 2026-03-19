@@ -233,6 +233,22 @@ async function handleButton(interaction, sharedState) {
 
     logger.info(`Button: ${customId} by ${interaction.user.tag}`);
 
+    // Board control panel buttons
+    if (customId === 'board_new_reminder') {
+        await handleNewReminderCommand(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_set_reminder') {
+        await handleSetReminderCommand(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_edit_reminder') {
+        await handleEditReminderCommand(interaction, sharedState);
+        return;
+    }
+
     // Template/Scheduled selection in /edit-reminder
     if (customId === 'edit_reminder_templates') {
         await handleEditTemplatesButton(interaction, sharedState);
