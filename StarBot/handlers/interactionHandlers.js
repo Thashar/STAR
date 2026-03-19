@@ -1083,8 +1083,6 @@ async function handleModalSubmit(interaction, sharedState) {
         }
         // Add event
         else if (customId === 'add_event_modal') {
-            await interaction.deferReply({ ephemeral: true });
-
             const { eventManager, eventListManager } = sharedState;
 
             const name = interaction.fields.getTextInputValue('name');
