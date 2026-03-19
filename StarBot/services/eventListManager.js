@@ -73,7 +73,7 @@ class EventListManager {
             let description = '';
             for (const event of sortedEvents) {
                 const timestamp = Math.floor(new Date(event.nextTrigger).getTime() / 1000);
-                description += `**${event.name}** - <t:${timestamp}:F> (<t:${timestamp}:R>) ⏳\n`;
+                description += `**${event.name}** - <t:${timestamp}:R> ⏳\n`;
             }
 
             embed.setDescription(description);
