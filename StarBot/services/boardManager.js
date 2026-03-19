@@ -409,22 +409,19 @@ class BoardManager {
 
         const embed = new EmbedBuilder()
             .setColor(0x5865F2) // Blurple
-            .setTitle('📋 Reminders Control Panel')
+            .setTitle('📋 Reminders & Events Control Panel')
             .setDescription(
-                '**How to use the reminder system:**\n\n' +
-                '**1️⃣ `/new-reminder`** - Create reminder template (Text or Embed)\n' +
-                '**2️⃣ `/set-reminder`** - Schedule reminder from template\n' +
-                '**3️⃣ `/edit-reminder`** - Edit or delete templates and scheduled reminders\n' +
-                '**🕐 `/set-time-zone`** - Set bot time zone for accurate scheduling\n\n' +
-                '📝 **Text** - Plain text message\n' +
-                '📋 **Embed** - Message with embedded content\n\n' +
+                '**How to use:**\n' +
+                'Use the buttons below to manage reminders and events.\n\n' +
+                '**Reminders:** Create templates → Schedule with interval → Auto-send to channels\n' +
+                '**Events:** Add events → They appear on the events list channel\n\n' +
                 `🕐 **Current timezone:** ${currentTimezone}\n` +
                 `⏰ **Current time:** ${currentTime}\n` +
                 `${eventsChannelText}\n` +
                 `**📚 Available Templates (${templates.length}):**\n${templatesText}\n\n` +
                 'All active reminders will appear above this panel.'
             )
-            .setFooter({ text: 'STAR Bot reminder system' });
+            .setFooter({ text: 'STAR Bot - Reminders & Events' });
 
         const row1 = new ActionRowBuilder()
             .addComponents(
