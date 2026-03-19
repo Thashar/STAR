@@ -415,7 +415,7 @@ class BoardManager {
             )
             .setFooter({ text: 'STAR Bot reminder system' });
 
-        const row = new ActionRowBuilder()
+        const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('board_new_reminder')
@@ -439,7 +439,31 @@ class BoardManager {
                     .setEmoji('🕐')
             );
 
-        return { embeds: [embed], components: [row] };
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('board_add_event')
+                    .setLabel('Add Event')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('📅'),
+                new ButtonBuilder()
+                    .setCustomId('board_delete_event')
+                    .setLabel('Delete Event')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️'),
+                new ButtonBuilder()
+                    .setCustomId('board_edit_event')
+                    .setLabel('Edit Event')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('✏️'),
+                new ButtonBuilder()
+                    .setCustomId('board_put_list')
+                    .setLabel('Put a List')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📋')
+            );
+
+        return { embeds: [embed], components: [row1, row2] };
     }
 
     // Build action buttons for scheduled reminder

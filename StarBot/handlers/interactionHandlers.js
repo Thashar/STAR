@@ -326,6 +326,27 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    // Event management buttons
+    if (customId === 'board_add_event') {
+        await handleAddEvent(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_delete_event') {
+        await handleDeleteEvent(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_edit_event') {
+        await handleEditEvent(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_put_list') {
+        await handlePutList(interaction, sharedState);
+        return;
+    }
+
     // Timezone category selection
     if (customId === 'timezone_category_positive') {
         await handleTimezoneCategorySelect(interaction, sharedState, 'positive');
@@ -444,6 +465,19 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    if (customId.startsWith('confirm_delete_event_')) {
+        await handleConfirmDeleteEvent(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'cancel_delete_event') {
+        await interaction.update({
+            content: '❌ Event deletion cancelled.',
+            components: []
+        });
+        return;
+    }
+
     if (customId.startsWith('cancel_delete_')) {
         await handleCancelDelete(interaction, sharedState);
         return;
@@ -485,6 +519,18 @@ async function handleSelectMenu(interaction, sharedState) {
     // Timezone selection for /set-time-zone
     if (customId === 'set_timezone_select') {
         await handleTimezoneSelect(interaction, sharedState);
+        return;
+    }
+
+    // Event delete selection
+    if (customId === 'delete_event_select') {
+        await handleDeleteEventSelect(interaction, sharedState);
+        return;
+    }
+
+    // Event edit selection
+    if (customId === 'edit_event_select') {
+        await handleEditEventSelect(interaction, sharedState);
         return;
     }
 }
@@ -716,6 +762,29 @@ async function handleChannelSelectMenu(interaction, sharedState) {
             content: `**Step 3/3:** Select roles to ping (optional)\n📍 **Channel:** <#${selectedChannel.id}>`,
             components: [row1, row2]
         });
+    }
+
+    if (customId === 'event_list_channel_select') {
+        const { eventListManager, logger } = sharedState;
+
+        const selectedChannel = interaction.channels.first();
+
+        try {
+            await eventListManager.setListChannel(selectedChannel.id);
+
+            await interaction.update({
+                content: `✅ **Events list channel set!**\n📍 **Channel:** <#${selectedChannel.id}>\n\nThe events list will be displayed there.`,
+                components: []
+            });
+
+            logger.success(`Events list channel set to: ${selectedChannel.name}`);
+        } catch (error) {
+            logger.error('Failed to set events list channel:', error);
+            await interaction.update({
+                content: '❌ Failed to set events list channel.',
+                components: []
+            });
+        }
     }
 }
 
@@ -1011,6 +1080,119 @@ async function handleModalSubmit(interaction, sharedState) {
             });
 
             logger.success(`Updated scheduled ${scheduledId}`);
+        }
+        // Add event
+        else if (customId === 'add_event_modal') {
+            const { eventManager, eventListManager } = sharedState;
+
+            const name = interaction.fields.getTextInputValue('name');
+            const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
+            const interval = interaction.fields.getTextInputValue('interval');
+
+            // Parse firstTrigger
+            const firstTrigger = new Date(firstTriggerStr);
+            if (isNaN(firstTrigger.getTime())) {
+                await interaction.reply({
+                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (firstTrigger < new Date()) {
+                await interaction.reply({
+                    content: '❌ First trigger date cannot be in the past.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            // Validate interval
+            if (!eventManager.validateInterval(interval)) {
+                await interaction.reply({
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            try {
+                const event = await eventManager.createEvent(
+                    interaction.user.id,
+                    name,
+                    firstTrigger,
+                    interval
+                );
+
+                // Update events list
+                await eventListManager.ensureEventsList();
+
+                await interaction.reply({
+                    content: `✅ **Event created!**\n📅 **Name:** ${name}\n🆔 **ID:** ${event.id}\n⏰ **Next trigger:** <t:${Math.floor(new Date(event.nextTrigger).getTime() / 1000)}:F>`,
+                    ephemeral: true
+                });
+
+                logger.success(`Created event ${event.id}`);
+            } catch (error) {
+                logger.error('Failed to create event:', error);
+                await interaction.reply({
+                    content: `❌ Error: ${error.message}`,
+                    ephemeral: true
+                });
+            }
+        }
+        // Edit event
+        else if (customId.startsWith('edit_event_modal_')) {
+            const { eventManager, eventListManager } = sharedState;
+
+            const eventId = customId.replace('edit_event_modal_', '');
+            const event = eventManager.getEvent(eventId);
+
+            if (!event) {
+                await interaction.editReply({ content: '❌ Event not found.' });
+                return;
+            }
+
+            const name = interaction.fields.getTextInputValue('name');
+            const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
+            const interval = interaction.fields.getTextInputValue('interval');
+
+            // Parse firstTrigger
+            const firstTrigger = new Date(firstTriggerStr);
+            if (isNaN(firstTrigger.getTime())) {
+                await interaction.editReply({
+                    content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM'
+                });
+                return;
+            }
+
+            // Validate interval
+            if (!eventManager.validateInterval(interval)) {
+                await interaction.editReply({
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d) or "ee"'
+                });
+                return;
+            }
+
+            const intervalMs = eventManager.parseInterval(interval);
+
+            await eventManager.updateEvent(eventId, {
+                name,
+                firstTrigger: firstTrigger.toISOString(),
+                interval,
+                intervalMs,
+                nextTrigger: firstTrigger.toISOString()
+            });
+
+            // Update events list
+            await eventListManager.ensureEventsList();
+
+            await interaction.editReply({
+                content: `✅ Event **${name}** has been updated!`,
+                components: []
+            });
+
+            logger.success(`Updated event ${eventId}`);
         }
 
     } catch (error) {
@@ -1772,6 +1954,36 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
     }
 }
 
+async function handleConfirmDeleteEvent(interaction, sharedState) {
+    const { eventManager, eventListManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const eventId = interaction.customId.replace('confirm_delete_event_', '');
+
+    try {
+        await eventManager.deleteEvent(eventId);
+
+        // Update events list
+        await eventListManager.ensureEventsList();
+
+        await interaction.editReply({
+            content: `✅ Event **${eventId}** has been deleted.`,
+            embeds: [],
+            components: []
+        });
+
+        logger.success(`Deleted event ${eventId}`);
+    } catch (error) {
+        logger.error('Error deleting event:', error);
+        await interaction.editReply({
+            content: '❌ Error deleting event.',
+            embeds: [],
+            components: []
+        });
+    }
+}
+
 async function handleCancelDelete(interaction, sharedState) {
     await interaction.update({
         content: '❌ Cancelled usuwanie.',
@@ -1900,6 +2112,231 @@ async function handleBoardScheduledDelete(interaction, sharedState) {
 
     await interaction.reply({
         content: '⚠️ **Are you sure you want to delete this scheduled reminder?**',
+        components: [row],
+        ephemeral: true
+    });
+}
+
+// ==================== EVENT SELECT HANDLERS ====================
+
+async function handleDeleteEventSelect(interaction, sharedState) {
+    const { eventManager } = sharedState;
+
+    const eventId = interaction.values[0];
+    const event = eventManager.getEvent(eventId);
+
+    if (!event) {
+        await interaction.update({
+            content: '❌ Event not found.',
+            components: []
+        });
+        return;
+    }
+
+    // Show confirmation
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`confirm_delete_event_${eventId}`)
+                .setLabel('Confirm Delete')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('✔️'),
+            new ButtonBuilder()
+                .setCustomId('cancel_delete_event')
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('✖️')
+        );
+
+    await interaction.update({
+        content: `❌ **Are you sure you want to delete this event?**\n\n📅 **Name:** ${event.name}\n🆔 **ID:** ${event.id}\n⏰ **Next trigger:** <t:${Math.floor(new Date(event.nextTrigger).getTime() / 1000)}:F>`,
+        components: [row]
+    });
+}
+
+async function handleEditEventSelect(interaction, sharedState) {
+    const { eventManager } = sharedState;
+
+    const eventId = interaction.values[0];
+    const event = eventManager.getEvent(eventId);
+
+    if (!event) {
+        await interaction.update({
+            content: '❌ Event not found.',
+            components: []
+        });
+        return;
+    }
+
+    // Show edit modal
+    const modal = new ModalBuilder()
+        .setCustomId(`edit_event_modal_${eventId}`)
+        .setTitle('Edit Event');
+
+    const nameInput = new TextInputBuilder()
+        .setCustomId('name')
+        .setLabel('Event name/description')
+        .setStyle(TextInputStyle.Short)
+        .setValue(event.name)
+        .setRequired(true)
+        .setMaxLength(100);
+
+    const firstTriggerInput = new TextInputBuilder()
+        .setCustomId('firstTrigger')
+        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(new Date(event.firstTrigger).toLocaleString('sv-SE', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).replace(',', '').replace('T', ' '))
+        .setRequired(true);
+
+    const intervalInput = new TextInputBuilder()
+        .setCustomId('interval')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(event.interval)
+        .setRequired(true)
+        .setMaxLength(10);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(nameInput),
+        new ActionRowBuilder().addComponents(firstTriggerInput),
+        new ActionRowBuilder().addComponents(intervalInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+// ==================== EVENT MANAGEMENT HANDLERS ====================
+
+async function handlePutList(interaction, sharedState) {
+    const { eventListManager, logger } = sharedState;
+
+    // Show channel select menu
+    const channelSelect = new ChannelSelectMenuBuilder()
+        .setCustomId('event_list_channel_select')
+        .setPlaceholder('Select channel for events list')
+        .setChannelTypes([ChannelType.GuildText]);
+
+    const row = new ActionRowBuilder().addComponents(channelSelect);
+
+    await interaction.reply({
+        content: '📋 **Select channel** where the events list should be displayed:',
+        components: [row],
+        ephemeral: true
+    });
+
+    logger.info(`Put a List initiated by ${interaction.user.tag}`);
+}
+
+async function handleAddEvent(interaction, sharedState) {
+    const { timezoneManager } = sharedState;
+
+    const currentTime = timezoneManager.getCurrentTime();
+
+    const modal = new ModalBuilder()
+        .setCustomId('add_event_modal')
+        .setTitle('Add Event');
+
+    const nameInput = new TextInputBuilder()
+        .setCustomId('name')
+        .setLabel('Event name/description')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('e.g. Boss Spawn, Weekly Meeting')
+        .setRequired(true)
+        .setMaxLength(100);
+
+    const firstTriggerInput = new TextInputBuilder()
+        .setCustomId('firstTrigger')
+        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
+        .setStyle(TextInputStyle.Short)
+        .setValue(currentTime)
+        .setRequired(true);
+
+    const intervalInput = new TextInputBuilder()
+        .setCustomId('interval')
+        .setLabel('Repeat interval (1s, 1m, 1h, 1d, ee)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('1d (max 28d) or "ee"')
+        .setRequired(true)
+        .setMaxLength(10);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(nameInput),
+        new ActionRowBuilder().addComponents(firstTriggerInput),
+        new ActionRowBuilder().addComponents(intervalInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function handleDeleteEvent(interaction, sharedState) {
+    const { eventManager } = sharedState;
+
+    const events = eventManager.getAllEvents();
+
+    if (events.length === 0) {
+        await interaction.reply({
+            content: '❌ No events to delete.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Show select menu with events
+    const options = events.map(e => ({
+        label: e.name.substring(0, 100),
+        description: `Next: ${new Date(e.nextTrigger).toLocaleDateString('en-US')}`,
+        value: e.id
+    }));
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('delete_event_select')
+        .setPlaceholder('Select event to delete')
+        .addOptions(options);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await interaction.reply({
+        content: '🗑️ **Select event to delete:**',
+        components: [row],
+        ephemeral: true
+    });
+}
+
+async function handleEditEvent(interaction, sharedState) {
+    const { eventManager } = sharedState;
+
+    const events = eventManager.getAllEvents();
+
+    if (events.length === 0) {
+        await interaction.reply({
+            content: '❌ No events to edit.',
+            ephemeral: true
+        });
+        return;
+    }
+
+    // Show select menu with events
+    const options = events.map(e => ({
+        label: e.name.substring(0, 100),
+        description: `Next: ${new Date(e.nextTrigger).toLocaleDateString('en-US')}`,
+        value: e.id
+    }));
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('edit_event_select')
+        .setPlaceholder('Select event to edit')
+        .addOptions(options);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await interaction.reply({
+        content: '✏️ **Select event to edit:**',
         components: [row],
         ephemeral: true
     });
