@@ -35,7 +35,7 @@ const client = new Client({
 const notificationManager = new NotificationManager(config, logger);
 const timezoneManager = new TimezoneManager(logger);
 const eventManager = new EventManager(config, logger);
-const boardManager = new BoardManager(client, config, logger, notificationManager, timezoneManager);
+const boardManager = new BoardManager(client, config, logger, notificationManager, timezoneManager, eventManager);
 const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
 const eventListManager = new EventListManager(client, config, logger, eventManager);
 

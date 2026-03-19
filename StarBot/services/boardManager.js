@@ -1,12 +1,13 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 class BoardManager {
-    constructor(client, config, logger, notificationManager, timezoneManager) {
+    constructor(client, config, logger, notificationManager, timezoneManager, eventManager) {
         this.client = client;
         this.config = config;
         this.logger = logger;
         this.notificationManager = notificationManager;
         this.timezoneManager = timezoneManager;
+        this.eventManager = eventManager;
         this.boardChannel = null;
         this.updateInterval = null;
         this.controlPanelMessageId = null;
@@ -357,6 +358,15 @@ class BoardManager {
         const currentTimezone = this.timezoneManager.getGlobalTimezone();
         const currentTime = this.timezoneManager.getCurrentTime();
 
+        // Get events list channel
+        const eventsChannelId = this.eventManager.getListChannelId();
+        let eventsChannelText = '';
+        if (eventsChannelId) {
+            eventsChannelText = `📋 **Events List Channel:** <#${eventsChannelId}>\n`;
+        } else {
+            eventsChannelText = `📋 **Events List Channel:** _Not set (use "Put a List" button)_\n`;
+        }
+
         // Get all templates
         const templates = this.notificationManager.getAllTemplates();
         let templatesText = '';
@@ -409,7 +419,8 @@ class BoardManager {
                 '📝 **Text** - Plain text message\n' +
                 '📋 **Embed** - Message with embedded content\n\n' +
                 `🕐 **Current timezone:** ${currentTimezone}\n` +
-                `⏰ **Current time:** ${currentTime}\n\n` +
+                `⏰ **Current time:** ${currentTime}\n` +
+                `${eventsChannelText}\n` +
                 `**📚 Available Templates (${templates.length}):**\n${templatesText}\n\n` +
                 'All active reminders will appear above this panel.'
             )
