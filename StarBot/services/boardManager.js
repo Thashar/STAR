@@ -428,6 +428,37 @@ class BoardManager {
         }
     }
 
+    // Update existing control panel (lightweight - doesn't search/create)
+    async updateControlPanel() {
+        if (!this.boardChannel) {
+            this.logger.error('Board channel not initialized');
+            return;
+        }
+
+        try {
+            if (this.controlPanelMessageId) {
+                // We know the message ID - just update it
+                const message = await this.boardChannel.messages.fetch(this.controlPanelMessageId);
+                const controlPanel = await this.buildControlPanel();
+                await message.edit(controlPanel);
+                this.logger.info('Control panel updated');
+            } else {
+                // Don't know message ID - call ensureControlPanel to find/create it
+                this.logger.warn('Control panel message ID not set, calling ensureControlPanel');
+                await this.ensureControlPanel();
+            }
+        } catch (error) {
+            // If message not found (10008) or other error, try to ensure it exists
+            if (error.code === 10008) {
+                this.logger.warn('Control panel message not found, recreating');
+                this.controlPanelMessageId = null;
+                await this.ensureControlPanel();
+            } else {
+                this.logger.error('Failed to update control panel:', error);
+            }
+        }
+    }
+
     // Build control panel with info
     async buildControlPanel() {
         const currentTimezone = this.timezoneManager.getGlobalTimezone();

@@ -762,7 +762,7 @@ async function handleChannelSelectMenu(interaction, sharedState) {
             const result = await eventListManager.setListChannel(selectedChannel.id);
 
             // Update control panel to show new channel
-            await boardManager.ensureControlPanel();
+            await boardManager.updateControlPanel();
 
             // Different message depending on whether it's the same channel
             if (result.sameChannel) {
