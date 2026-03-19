@@ -37,14 +37,26 @@ async function handleInteraction(interaction, sharedState) {
             await handleModalSubmit(interaction, sharedState);
         }
     } catch (error) {
+        // Unknown interaction - timeout (>3s od kliknięcia)
+        if (error.code === 10062) {
+            logger.error('⚠️ Unknown interaction - user clicked button but response took too long (>3s)');
+            // Nie próbuj odpowiadać - interakcja już wygasła
+            return;
+        }
+
         logger.error('Error handling interaction:', error);
 
         const errorMessage = '❌ An error occurred during processing akcji.';
 
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: errorMessage, ephemeral: true });
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: errorMessage, ephemeral: true });
+            } else if (interaction.isRepliable()) {
+                await interaction.reply({ content: errorMessage, ephemeral: true });
+            }
+        } catch (followUpError) {
+            // Interakcja mogła wygasnąć podczas obsługi błędu
+            logger.error('Could not send error message to user:', followUpError.message);
         }
     }
 }
@@ -2252,7 +2264,22 @@ async function handleAddEvent(interaction, sharedState) {
         new ActionRowBuilder().addComponents(intervalInput)
     );
 
-    await interaction.showModal(modal);
+    try {
+        // Sprawdź czy interakcja jest nadal ważna (3s timeout)
+        if (!interaction.isRepliable()) {
+            console.error('⚠️ Interaction expired before showModal could be called');
+            return;
+        }
+
+        await interaction.showModal(modal);
+    } catch (error) {
+        // Unknown interaction - prawdopodobnie timeout (>3s)
+        if (error.code === 10062) {
+            console.error('⚠️ Unknown interaction - user clicked button but response took too long (>3s)');
+        } else {
+            console.error('❌ Error showing modal:', error);
+        }
+    }
 }
 
 async function handleDeleteEvent(interaction, sharedState) {

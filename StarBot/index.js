@@ -75,7 +75,7 @@ async function registerCommands() {
 }
 
 // Event: Bot ready
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     logger.success(`✅ StarBot ready - logged in as ${client.user.tag}`);
     logger.info(`Servers: ${client.guilds.cache.size}`);
     logger.info(`Users: ${client.users.cache.size}`);
