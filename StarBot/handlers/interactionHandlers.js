@@ -70,6 +70,10 @@ async function handleSlashCommand(interaction, sharedState) {
             await handleEditReminderCommand(interaction, sharedState);
             break;
 
+        case 'set-time-zone':
+            await handleSetTimezoneCommand(interaction, sharedState);
+            break;
+
         default:
             await interaction.reply({
                 content: '❌ Nieznana komenda.',
@@ -225,6 +229,35 @@ async function handleEditReminderCommand(interaction, sharedState) {
     });
 }
 
+// ==================== /SET-TIME-ZONE ====================
+
+async function handleSetTimezoneCommand(interaction, sharedState) {
+    const { timezoneManager } = sharedState;
+
+    const currentTimezone = timezoneManager.getUserTimezone(interaction.user.id);
+    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
+
+    const timezones = timezoneManager.getCommonTimezones();
+
+    // Create select menu with timezones
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('set_timezone_select')
+        .setPlaceholder('Select your timezone')
+        .addOptions(timezones.map(tz => ({
+            label: tz.label,
+            value: tz.value,
+            default: tz.value === currentTimezone
+        })));
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await interaction.reply({
+        content: `🕐 **Your current timezone:** ${currentTimezone}\n⏰ **Current time:** ${currentTime}\n\nSelect your timezone from the list below:`,
+        components: [row],
+        ephemeral: true
+    });
+}
+
 // ==================== BUTTON HANDLERS ====================
 
 async function handleButton(interaction, sharedState) {
@@ -246,6 +279,11 @@ async function handleButton(interaction, sharedState) {
 
     if (customId === 'board_edit_reminder') {
         await handleEditReminderCommand(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'board_set_timezone') {
+        await handleSetTimezoneCommand(interaction, sharedState);
         return;
     }
 
@@ -388,6 +426,12 @@ async function handleSelectMenu(interaction, sharedState) {
         await handleScheduledSelectForEdit(interaction, sharedState);
         return;
     }
+
+    // Timezone selection for /set-time-zone
+    if (customId === 'set_timezone_select') {
+        await handleTimezoneSelect(interaction, sharedState);
+        return;
+    }
 }
 
 async function handleNewReminderTypeSelect(interaction, sharedState) {
@@ -476,7 +520,7 @@ async function handleNewReminderTypeSelect(interaction, sharedState) {
 }
 
 async function handleTemplateSelectForSet(interaction, sharedState) {
-    const { notificationManager, userStates } = sharedState;
+    const { notificationManager, timezoneManager, userStates } = sharedState;
 
     const templateId = interaction.values[0];
     const template = notificationManager.getTemplate(templateId);
@@ -490,15 +534,8 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
     }
 
     // Pokaż modal do ustawienia harmonogramu
-    const now = new Date();
-    const currentTime = now.toLocaleString('sv-SE', {
-        timeZone: 'Europe/Warsaw',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    }).replace(',', '');
+    // Use user's timezone (defaults to UTC if not set)
+    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
 
     const modal = new ModalBuilder()
         .setCustomId(`set_reminder_modal_${templateId}`)
@@ -506,9 +543,9 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel(`First trigger (current: ${currentTime})`)
+        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('YYYY-MM-DD HH:MM')
+        .setValue(currentTime)
         .setRequired(true);
 
     const intervalInput = new TextInputBuilder()
@@ -559,6 +596,20 @@ async function handleScheduledSelectForEdit(interaction, sharedState) {
     }
 
     await showScheduledEditPreview(interaction, scheduled, sharedState);
+}
+
+async function handleTimezoneSelect(interaction, sharedState) {
+    const { timezoneManager } = sharedState;
+
+    const selectedTimezone = interaction.values[0];
+    await timezoneManager.setUserTimezone(interaction.user.id, selectedTimezone);
+
+    const currentTime = timezoneManager.getCurrentTimeForUser(interaction.user.id);
+
+    await interaction.update({
+        content: `✅ **Timezone updated!**\n🕐 **New timezone:** ${selectedTimezone}\n⏰ **Current time:** ${currentTime}`,
+        components: []
+    });
 }
 
 // ==================== CHANNEL SELECT MENU ====================
@@ -615,6 +666,25 @@ async function handleRoleSelectMenu(interaction, sharedState) {
     const customId = interaction.customId;
 
     logger.info(`Role Select: ${customId} by ${interaction.user.tag}`);
+
+    if (customId.startsWith('set_reminder_skip_roles_')) {
+        await interaction.deferUpdate();
+
+        const sessionId = customId.replace('set_reminder_skip_roles_', '');
+        const userState = userStates.get(interaction.user.id);
+
+        if (!userState || userState.sessionId !== sessionId) {
+            await interaction.editReply({
+                content: '❌ Session expired. Start over.',
+                components: []
+            });
+            return;
+        }
+
+        userState.roles = []; // No roles selected
+
+        await createScheduledFromUserState(interaction, sharedState, userState);
+    }
 
     if (customId.startsWith('set_reminder_roles_')) {
         await interaction.deferUpdate();

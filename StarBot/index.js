@@ -8,6 +8,7 @@ const commands = require('./commands');
 const NotificationManager = require('./services/notificationManager');
 const BoardManager = require('./services/boardManager');
 const Scheduler = require('./services/scheduler');
+const TimezoneManager = require('./services/timezoneManager');
 
 const logger = createBotLogger('StarBot');
 
@@ -32,6 +33,7 @@ const client = new Client({
 const notificationManager = new NotificationManager(config, logger);
 const boardManager = new BoardManager(client, config, logger, notificationManager);
 const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
+const timezoneManager = new TimezoneManager(logger);
 
 // User states for multi-step interactions
 const userStates = new Map();
@@ -44,6 +46,7 @@ const sharedState = {
     notificationManager,
     boardManager,
     scheduler,
+    timezoneManager,
     userStates
 };
 
@@ -81,6 +84,7 @@ client.once('ready', async () => {
     // Initialize services
     try {
         await notificationManager.initialize();
+        await timezoneManager.initialize();
         await boardManager.initialize();
         scheduler.initialize();
 

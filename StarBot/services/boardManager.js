@@ -352,7 +352,12 @@ class BoardManager {
                     .setCustomId('board_edit_reminder')
                     .setLabel('Edit Reminder')
                     .setStyle(ButtonStyle.Primary)
-                    .setEmoji('✏️')
+                    .setEmoji('✏️'),
+                new ButtonBuilder()
+                    .setCustomId('board_set_timezone')
+                    .setLabel('Set Time Zone')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🕐')
             );
 
         return { embeds: [embed], components: [row] };

@@ -14,5 +14,10 @@ module.exports = [
     // Edit or delete reminders
     new SlashCommandBuilder()
         .setName('edit-reminder')
-        .setDescription('Edit or delete reminders (templates or scheduled)')
+        .setDescription('Edit or delete reminders (templates or scheduled)'),
+
+    // Set user's time zone
+    new SlashCommandBuilder()
+        .setName('set-time-zone')
+        .setDescription('Set your time zone for reminder scheduling')
 ];
