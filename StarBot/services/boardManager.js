@@ -162,18 +162,19 @@ class BoardManager {
 
             return true;
         } catch (error) {
-            // Deduplikacja logów błędów DNS - loguj tylko raz na 5 minut
-            const isDnsError = error.code === 'EAI_AGAIN' || error.syscall === 'getaddrinfo';
+            const isNetworkError = error.code === 'EAI_AGAIN'
+                || error.syscall === 'getaddrinfo'
+                || error.name === 'ConnectTimeoutError'
+                || error.code === 'UND_ERR_CONNECT_TIMEOUT';
             const now = Date.now();
 
-            if (isDnsError) {
-                // Loguj błąd DNS tylko raz na 5 minut
+            if (isNetworkError) {
+                // Log network errors at most once every 5 minutes
                 if (now - this.lastDnsErrorLog > 5 * 60 * 1000) {
-                    this.logger.error(`❌ DNS error - cannot reach Discord API (will retry): ${error.message}`);
+                    this.logger.warn(`Network error - cannot reach Discord API (will retry): ${error.message}`);
                     this.lastDnsErrorLog = now;
                 }
             } else {
-                // Inne błędy - loguj normalnie
                 this.logger.error(`Failed to update embed for ${scheduled.id}:`, error);
 
                 // If message not found, create new one
@@ -512,7 +513,15 @@ class BoardManager {
                 this.logger.warn('Control panel not found - skipping update (will be created on next bot restart)');
             }
         } catch (error) {
-            this.logger.error('Failed to update control panel:', error);
+            const isNetworkError = error.code === 'EAI_AGAIN'
+                || error.syscall === 'getaddrinfo'
+                || error.name === 'ConnectTimeoutError'
+                || error.code === 'UND_ERR_CONNECT_TIMEOUT';
+            if (isNetworkError) {
+                this.logger.warn(`Network error updating control panel (will retry): ${error.message}`);
+            } else {
+                this.logger.error('Failed to update control panel:', error);
+            }
         }
     }
 
