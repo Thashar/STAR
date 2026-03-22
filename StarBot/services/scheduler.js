@@ -59,12 +59,14 @@ class Scheduler {
                 if (isOneTime) {
                     // One-time - delete embed from board
                     await this.boardManager.deleteEmbed(sch);
-                    this.logger.info(`Triggered one-time reminder: ${sch.id} - removed from board`);
+                    const tplName = this.notificationManager.getTemplate(sch.templateId)?.name || sch.templateId;
+                    this.logger.info(`Triggered one-time reminder: ${sch.id} "${tplName}" - removed from board`);
                 } else {
                     // Recurring - update board embed with new next trigger
                     const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
                     await this.boardManager.updateEmbed(updatedScheduled);
-                    this.logger.info(`Triggered recurring reminder: ${sch.id}`);
+                    const tplName = updatedScheduled?.template?.name || sch.templateId;
+                    this.logger.info(`Triggered recurring reminder: ${sch.id} "${tplName}"`);
                 }
 
                 anyTriggered = true;
@@ -87,7 +89,7 @@ class Scheduler {
 
             const channel = await this.client.channels.fetch(scheduled.channelId);
             if (!channel) {
-                this.logger.error(`Channel not found: ${scheduled.channelId}`);
+                this.logger.error(`Channel not found (id: ${scheduled.channelId}) for scheduled ${scheduled.id}`);
                 return;
             }
 
@@ -122,12 +124,12 @@ class Scheduler {
 
             const message = await channel.send({ content, embeds });
 
-            this.logger.success(`Notification sent to channel ${scheduled.channelId} (scheduled: ${scheduled.id})`);
+            this.logger.success(`Notification "${template.name}" sent to #${channel.name} (${scheduled.id})`);
 
             // If type 1 (standardized) - schedule auto-delete after 23h 50min
             if (scheduled.notificationType === 1) {
                 await this.notificationManager.addMessageToDelete(message.id, scheduled.channelId);
-                this.logger.info(`Message ${message.id} will be auto-deleted in 23h 50min (type: standardized)`);
+                this.logger.info(`Message ${message.id} in #${channel.name} scheduled for auto-delete in 23h 50min`);
             }
         } catch (error) {
             this.logger.error(`Failed to trigger scheduled ${scheduled.id}:`, error);
@@ -141,13 +143,13 @@ class Scheduler {
             try {
                 const channel = await this.client.channels.fetch(msg.channelId);
                 if (!channel) {
-                    this.logger.warn(`Channel not found: ${msg.channelId} (message ${msg.messageId})`);
+                    this.logger.warn(`Channel not found (id: ${msg.channelId}) - removing message ${msg.messageId} from delete list`);
                     await this.notificationManager.removeMessageFromDeleteList(msg.messageId);
                     continue;
                 }
 
                 await channel.messages.delete(msg.messageId);
-                this.logger.success(`Deleted message ${msg.messageId} from channel ${msg.channelId} (23h 50min elapsed)`);
+                this.logger.success(`Deleted message ${msg.messageId} from #${channel.name} (23h 50min elapsed)`);
                 await this.notificationManager.removeMessageFromDeleteList(msg.messageId);
             } catch (error) {
                 if (error.code === 10008) { // Unknown Message

@@ -82,7 +82,7 @@ class NotificationManager {
         this.data.templates.push(template);
         await this.saveData();
 
-        this.logger.info(`Created template: ${template.id} (${type})`);
+        this.logger.info(`Created template: ${template.id} "${name}" (${type})`);
         return template;
     }
 
@@ -182,7 +182,8 @@ class NotificationManager {
         this.data.scheduled.push(scheduled);
         await this.saveData();
 
-        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId}, ${interval ? 'recurring' : 'one-time'}, type: ${notificationType})`);
+        const tpl = this.getTemplate(templateId);
+        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: "${tpl?.name || templateId}", ${interval ? 'interval: ' + interval : 'one-time'}, type: ${notificationType === 1 ? 'standardized' : 'standard'})`);
         return scheduled;
     }
 
