@@ -490,6 +490,26 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    // Skip roles (no pings)
+    if (customId.startsWith('set_reminder_skip_roles_')) {
+        await interaction.deferUpdate();
+
+        const sessionId = customId.replace('set_reminder_skip_roles_', '');
+        const userState = userStates.get(interaction.user.id);
+
+        if (!userState || userState.sessionId !== sessionId) {
+            await interaction.editReply({
+                content: '❌ Session expired. Start over.',
+                components: []
+            });
+            return;
+        }
+
+        userState.roles = [];
+        await createScheduledFromUserState(interaction, sharedState, userState);
+        return;
+    }
+
     // Confirm delete
     if (customId.startsWith('confirm_delete_template_')) {
         await handleConfirmDeleteTemplate(interaction, sharedState);
@@ -853,25 +873,6 @@ async function handleRoleSelectMenu(interaction, sharedState) {
     const customId = interaction.customId;
 
     logger.info(`Role Select: ${customId} by ${interaction.user.tag}`);
-
-    if (customId.startsWith('set_reminder_skip_roles_')) {
-        await interaction.deferUpdate();
-
-        const sessionId = customId.replace('set_reminder_skip_roles_', '');
-        const userState = userStates.get(interaction.user.id);
-
-        if (!userState || userState.sessionId !== sessionId) {
-            await interaction.editReply({
-                content: '❌ Session expired. Start over.',
-                components: []
-            });
-            return;
-        }
-
-        userState.roles = []; // No roles selected
-
-        await createScheduledFromUserState(interaction, sharedState, userState);
-    }
 
     if (customId.startsWith('set_reminder_roles_')) {
         await interaction.deferUpdate();
