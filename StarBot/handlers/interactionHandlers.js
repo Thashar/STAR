@@ -660,9 +660,9 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
 
     const typeInput = new TextInputBuilder()
         .setCustomId('type')
-        .setLabel('Type: 0 = standard | 1 = standardized (auto-delete 23h50m)')
+        .setLabel('Type: 0=standard | 1=standardized')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('0 or 1')
+        .setPlaceholder('0=standard, 1=standardized (auto-delete 23h50m)')
         .setValue('0')
         .setRequired(true)
         .setMaxLength(1);
