@@ -12,6 +12,43 @@ const {
     RoleSelectMenuBuilder
 } = require('discord.js');
 
+// ==================== TIMEZONE HELPERS ====================
+
+// Parse "YYYY-MM-DD HH:MM" as local time in the given IANA timezone, returns a Date (UTC)
+function parseDateInTimezone(dateStr, timezone) {
+    const [datePart, timePart] = dateStr.trim().split(' ');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+
+    // Create reference by treating input as UTC
+    const refUtc = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+
+    // Find what this UTC moment looks like in the target timezone
+    const localStr = new Date(refUtc).toLocaleString('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    }).replace(',', '').trim(); // "YYYY-MM-DD HH:MM"
+
+    const [lDatePart, lTimePart] = localStr.split(' ');
+    const [lYear, lMonth, lDay] = lDatePart.split('-').map(Number);
+    const [lHours, lMinutes] = lTimePart.split(':').map(Number);
+
+    const tzMs = Date.UTC(lYear, lMonth - 1, lDay, lHours, lMinutes);
+    const offsetMs = tzMs - refUtc; // positive = timezone is ahead of UTC
+
+    return new Date(refUtc - offsetMs);
+}
+
+// Format a UTC ISO string as "YYYY-MM-DD HH:MM" in the given IANA timezone
+function formatDateInTimezone(isoString, timezone) {
+    return new Date(isoString).toLocaleString('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    }).replace(',', '').trim().substring(0, 16);
+}
+
 // ==================== MAIN HANDLER ====================
 
 async function handleInteraction(interaction, sharedState) {
@@ -860,7 +897,7 @@ async function handleRoleSelectMenu(interaction, sharedState) {
 // ==================== MODAL SUBMIT HANDLERS ====================
 
 async function handleModalSubmit(interaction, sharedState) {
-    const { notificationManager, boardManager, logger, userStates } = sharedState;
+    const { notificationManager, boardManager, logger, userStates, timezoneManager } = sharedState;
     const customId = interaction.customId;
 
     logger.info(`Modal Submit: ${customId} by ${interaction.user.tag}`);
@@ -938,8 +975,8 @@ async function handleModalSubmit(interaction, sharedState) {
                 return;
             }
 
-            // Parse firstTrigger
-            const firstTrigger = new Date(firstTriggerStr);
+            // Parse firstTrigger in configured timezone
+            const firstTrigger = parseDateInTimezone(firstTriggerStr, timezoneManager.getGlobalTimezone());
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
                     content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)'
@@ -1117,8 +1154,8 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
             const interval = interaction.fields.getTextInputValue('interval');
 
-            // Parse firstTrigger
-            const firstTrigger = new Date(firstTriggerStr);
+            // Parse firstTrigger in configured timezone
+            const firstTrigger = parseDateInTimezone(firstTriggerStr, timezoneManager.getGlobalTimezone());
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
                     content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM'
@@ -1174,8 +1211,8 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
             const interval = interaction.fields.getTextInputValue('interval');
 
-            // Parse firstTrigger
-            const firstTrigger = new Date(firstTriggerStr);
+            // Parse firstTrigger in configured timezone
+            const firstTrigger = parseDateInTimezone(firstTriggerStr, timezoneManager.getGlobalTimezone());
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
                     content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM (e.g. 2026-03-20 10:00)'
@@ -1237,8 +1274,8 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
             const interval = interaction.fields.getTextInputValue('interval');
 
-            // Parse firstTrigger
-            const firstTrigger = new Date(firstTriggerStr);
+            // Parse firstTrigger in configured timezone
+            const firstTrigger = parseDateInTimezone(firstTriggerStr, timezoneManager.getGlobalTimezone());
             if (isNaN(firstTrigger.getTime())) {
                 await interaction.editReply({
                     content: '❌ Invalid date format. Use: YYYY-MM-DD HH:MM'
@@ -1912,7 +1949,7 @@ async function handleEditTemplateDelete(interaction, sharedState) {
 }
 
 async function handleEditScheduledEdit(interaction, sharedState) {
-    const { notificationManager } = sharedState;
+    const { notificationManager, timezoneManager } = sharedState;
 
     const scheduledId = interaction.customId.replace('edit_scheduled_edit_', '');
     const scheduled = notificationManager.getScheduled(scheduledId);
@@ -1929,8 +1966,7 @@ async function handleEditScheduledEdit(interaction, sharedState) {
         .setCustomId(`edit_scheduled_modal_${scheduledId}`)
         .setTitle('Edit scheduled reminder');
 
-    const firstTriggerDate = new Date(scheduled.firstTrigger);
-    const formattedDate = `${firstTriggerDate.getFullYear()}-${String(firstTriggerDate.getMonth() + 1).padStart(2, '0')}-${String(firstTriggerDate.getDate()).padStart(2, '0')} ${String(firstTriggerDate.getHours()).padStart(2, '0')}:${String(firstTriggerDate.getMinutes()).padStart(2, '0')}`;
+    const formattedDate = formatDateInTimezone(scheduled.firstTrigger, timezoneManager.getGlobalTimezone());
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
@@ -2139,7 +2175,7 @@ async function handleBoardScheduledResume(interaction, sharedState) {
 }
 
 async function handleBoardScheduledEdit(interaction, sharedState) {
-    const { notificationManager } = sharedState;
+    const { notificationManager, timezoneManager } = sharedState;
 
     const scheduledId = interaction.customId.replace('scheduled_edit_', '');
     const scheduled = notificationManager.getScheduled(scheduledId);
@@ -2156,8 +2192,7 @@ async function handleBoardScheduledEdit(interaction, sharedState) {
         .setCustomId(`edit_scheduled_modal_${scheduledId}`)
         .setTitle('Edit scheduled reminder');
 
-    const firstTriggerDate = new Date(scheduled.firstTrigger);
-    const formattedDate = `${firstTriggerDate.getFullYear()}-${String(firstTriggerDate.getMonth() + 1).padStart(2, '0')}-${String(firstTriggerDate.getDate()).padStart(2, '0')} ${String(firstTriggerDate.getHours()).padStart(2, '0')}:${String(firstTriggerDate.getMinutes()).padStart(2, '0')}`;
+    const formattedDate = formatDateInTimezone(scheduled.firstTrigger, timezoneManager.getGlobalTimezone());
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
@@ -2337,7 +2372,7 @@ async function handleDeleteEventSelect(interaction, sharedState) {
 }
 
 async function handleEditEventSelect(interaction, sharedState) {
-    const { eventManager } = sharedState;
+    const { eventManager, timezoneManager } = sharedState;
 
     const eventId = interaction.values[0];
     const event = eventManager.getEvent(eventId);
@@ -2367,13 +2402,7 @@ async function handleEditEventSelect(interaction, sharedState) {
         .setCustomId('firstTrigger')
         .setLabel('First trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
-        .setValue(new Date(event.firstTrigger).toLocaleString('sv-SE', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        }).replace(',', '').replace('T', ' '))
+        .setValue(formatDateInTimezone(event.firstTrigger, timezoneManager.getGlobalTimezone()))
         .setRequired(true);
 
     const intervalInput = new TextInputBuilder()
