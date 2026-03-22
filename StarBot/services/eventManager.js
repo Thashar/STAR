@@ -105,7 +105,7 @@ class EventManager {
         this.data.events.push(event);
         await this.saveData();
 
-        this.logger.info(`Created event: ${event.id} (${interval ? 'recurring' : 'one-time'})`);
+        this.logger.info(`Event created: "${name}" (${interval ? 'recurring: ' + interval : 'one-time'})`);
         return event;
     }
 
@@ -188,7 +188,7 @@ class EventManager {
                 ...updates
             };
             await this.saveData();
-            this.logger.info(`Updated event: ${id}`);
+            this.logger.info(`Event updated: "${this.data.events[index].name}"`);
             return true;
         }
         return false;
@@ -196,12 +196,13 @@ class EventManager {
 
     // Delete event
     async deleteEvent(id) {
+        const event = this.getEvent(id);
         const initialLength = this.data.events.length;
         this.data.events = this.data.events.filter(e => e.id !== id);
 
         if (this.data.events.length < initialLength) {
             await this.saveData();
-            this.logger.info(`Deleted event: ${id}`);
+            this.logger.info(`Event deleted: "${event?.name ?? id}"`);
             return true;
         }
         return false;
@@ -214,7 +215,7 @@ class EventManager {
 
         // If this is a one-time event, delete it
         if (!event.interval || event.interval === null || event.isOneTime) {
-            this.logger.info(`One-time event ${id} executed - removing from list`);
+            this.logger.info(`One-time event executed: "${event.name}" - removing from list`);
             return await this.deleteEvent(id);
         }
 
@@ -249,7 +250,7 @@ class EventManager {
         this.data.listChannelId = channelId;
         this.data.listMessageId = null; // Reset message ID
         await this.saveData();
-        this.logger.info(`Set events list channel: ${channelId}`);
+        this.logger.info(`Events list channel set (id: ${channelId})`);
     }
 
     // Get list channel ID

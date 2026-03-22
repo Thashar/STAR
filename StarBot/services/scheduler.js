@@ -55,12 +55,14 @@ class Scheduler {
                 if (isOneTime) {
                     // One-time - delete embed from board
                     await this.boardManager.deleteEmbed(sch);
-                    this.logger.info(`Triggered one-time reminder: ${sch.id} - removed from board`);
+                    const name = this.notificationManager.getTemplate(sch.templateId)?.name ?? sch.id;
+                    this.logger.info(`One-time reminder triggered: "${name}" - removed from board`);
                 } else {
                     // Recurring - update board embed
                     const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
                     await this.boardManager.updateEmbed(updatedScheduled);
-                    this.logger.info(`Triggered recurring reminder: ${sch.id}`);
+                    const name = this.notificationManager.getTemplate(sch.templateId)?.name ?? sch.id;
+                    this.logger.info(`Recurring reminder triggered: "${name}"`);
                 }
             }
         }
@@ -70,13 +72,13 @@ class Scheduler {
         try {
             const template = this.notificationManager.getTemplate(scheduled.templateId);
             if (!template) {
-                this.logger.error(`Template not found for scheduled: ${scheduled.id} (templateId: ${scheduled.templateId})`);
+                this.logger.error(`Template not found for scheduled reminder (id: ${scheduled.id})`);
                 return;
             }
 
             const channel = await this.client.channels.fetch(scheduled.channelId);
             if (!channel) {
-                this.logger.error(`Channel not found: ${scheduled.channelId}`);
+                this.logger.error(`Channel not found (id: ${scheduled.channelId})`);
                 return;
             }
 
@@ -111,9 +113,10 @@ class Scheduler {
 
             await channel.send({ content, embeds });
 
-            this.logger.success(`Notification sent to channel ${scheduled.channelId} (scheduled: ${scheduled.id})`);
+            this.logger.success(`Notification sent: "${template.name}" → #${channel.name}`);
         } catch (error) {
-            this.logger.error(`Failed to trigger scheduled ${scheduled.id}:`, error);
+            const name = this.notificationManager.getTemplate(scheduled.templateId)?.name ?? scheduled.id;
+            this.logger.error(`Failed to trigger reminder "${name}":`, error);
         }
     }
 }

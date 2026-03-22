@@ -29,12 +29,12 @@ class BoardManager {
             }
 
             this.boardChannel = channel;
-            this.logger.success('BoardManager initialized');
+            this.logger.success(`BoardManager initialized - board channel: #${channel.name}`);
 
             // Load control panel message ID from persistent storage
             this.controlPanelMessageId = this.eventManager.getControlPanelMessageId();
             if (this.controlPanelMessageId) {
-                this.logger.info(`Loaded control panel message ID: ${this.controlPanelMessageId}`);
+                this.logger.info('Loaded control panel message from storage');
             }
 
             // Start periodic updates
@@ -112,11 +112,11 @@ class BoardManager {
         }
 
         if (!scheduled.template) {
-            this.logger.error(`createEmbed: scheduled ${scheduled.id} has no template attached`);
+            this.logger.error(`createEmbed: scheduled reminder "${scheduled.id}" has no template attached`);
             return null;
         }
 
-        this.logger.info(`Creating embed for scheduled ${scheduled.id} with template ${scheduled.template.name}`);
+        this.logger.info(`Creating board embed for "${scheduled.template.name}"`);
 
         try {
             const embed = await this.buildEmbed(scheduled);
@@ -129,10 +129,10 @@ class BoardManager {
             // Move control panel to bottom
             await this.ensureControlPanel();
 
-            this.logger.info(`Created board embed for scheduled: ${scheduled.id}`);
+            this.logger.info(`Board embed created: "${scheduled.template.name}"`);
             return message;
         } catch (error) {
-            this.logger.error(`Failed to create embed for ${scheduled.id}:`, error);
+            this.logger.error(`Failed to create board embed for "${scheduled.template?.name ?? scheduled.id}":`, error);
             return null;
         }
     }
@@ -150,7 +150,7 @@ class BoardManager {
         }
 
         if (!scheduled.boardMessageId) {
-            this.logger.warn(`No board message ID for scheduled: ${scheduled.id}`);
+            this.logger.warn(`No board embed for "${scheduled.template?.name ?? scheduled.id}" - skipping update`);
             return false;
         }
 
@@ -175,7 +175,7 @@ class BoardManager {
                     this.lastDnsErrorLog = now;
                 }
             } else {
-                this.logger.error(`Failed to update embed for ${scheduled.id}:`, error);
+                this.logger.error(`Failed to update board embed for "${scheduled.template?.name ?? scheduled.id}":`, error);
 
                 // If message not found, create new one
                 if (error.code === 10008) {
@@ -202,10 +202,12 @@ class BoardManager {
             const message = await this.boardChannel.messages.fetch(scheduled.boardMessageId);
             await message.delete();
 
-            this.logger.info(`Deleted board embed for scheduled: ${scheduled.id}`);
+            const name = scheduled.template?.name ?? scheduled.id;
+            this.logger.info(`Board embed deleted: "${name}"`);
             return true;
         } catch (error) {
-            this.logger.error(`Failed to delete embed for ${scheduled.id}:`, error);
+            const name = scheduled.template?.name ?? scheduled.id;
+            this.logger.error(`Failed to delete board embed for "${name}":`, error);
             return false;
         }
     }
@@ -322,7 +324,7 @@ class BoardManager {
                 }
             } catch (error) {
                 // User might have left the server or ID is invalid
-                this.logger.warn(`Failed to fetch member ${scheduled.creator}: ${error.message}`);
+                this.logger.warn(`Failed to fetch member info: ${error.message}`);
             }
         }
         embed.setFooter({ text: `Created by ${creatorName}` });
@@ -434,7 +436,7 @@ class BoardManager {
                     for (let i = 1; i < allPanels.length; i++) {
                         try {
                             await allPanels[i].delete();
-                            this.logger.info(`Deleted duplicate control panel: ${allPanels[i].id}`);
+                            this.logger.info('Deleted duplicate control panel');
                         } catch (error) {
                             this.logger.warn(`Failed to delete duplicate:`, error.message);
                         }

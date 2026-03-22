@@ -74,7 +74,7 @@ class NotificationManager {
         this.data.templates.push(template);
         await this.saveData();
 
-        this.logger.info(`Created template: ${template.id} (${type})`);
+        this.logger.info(`Template created: "${name}" (${type})`);
         return template;
     }
 
@@ -102,7 +102,7 @@ class NotificationManager {
                 ...updates
             };
             await this.saveData();
-            this.logger.info(`Updated template: ${id}`);
+            this.logger.info(`Template updated: "${this.data.templates[index].name}"`);
             return true;
         }
         return false;
@@ -110,6 +110,7 @@ class NotificationManager {
 
     // Delete template
     async deleteTemplate(id) {
+        const template = this.getTemplate(id);
         const initialLength = this.data.templates.length;
         this.data.templates = this.data.templates.filter(t => t.id !== id);
 
@@ -117,7 +118,7 @@ class NotificationManager {
             // Also delete all scheduled reminders using this template
             this.data.scheduled = this.data.scheduled.filter(s => s.templateId !== id);
             await this.saveData();
-            this.logger.info(`Deleted template: ${id} and all associated scheduled reminders`);
+            this.logger.info(`Template deleted: "${template?.name ?? id}" (and associated reminders)`);
             return true;
         }
         return false;
@@ -173,7 +174,8 @@ class NotificationManager {
         this.data.scheduled.push(scheduled);
         await this.saveData();
 
-        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId}, ${interval ? 'recurring' : 'one-time'})`);
+        const templateName = this.getTemplate(templateId)?.name ?? templateId;
+        this.logger.info(`Scheduled reminder created: "${templateName}" (${interval ? 'recurring: ' + interval : 'one-time'})`);
         return scheduled;
     }
 
@@ -273,7 +275,8 @@ class NotificationManager {
                 ...updates
             };
             await this.saveData();
-            this.logger.info(`Updated scheduled reminder: ${id}`);
+            const tplName = this.getTemplate(this.data.scheduled[index].templateId)?.name ?? id;
+            this.logger.info(`Scheduled reminder updated: "${tplName}"`);
             return true;
         }
         return false;
@@ -281,12 +284,14 @@ class NotificationManager {
 
     // Delete scheduled reminder
     async deleteScheduled(id) {
+        const sch = this.getScheduled(id);
         const initialLength = this.data.scheduled.length;
         this.data.scheduled = this.data.scheduled.filter(s => s.id !== id);
 
         if (this.data.scheduled.length < initialLength) {
             await this.saveData();
-            this.logger.info(`Deleted scheduled reminder: ${id}`);
+            const tplName = this.getTemplate(sch?.templateId)?.name ?? id;
+            this.logger.info(`Scheduled reminder deleted: "${tplName}"`);
             return true;
         }
         return false;
@@ -309,7 +314,8 @@ class NotificationManager {
 
         // If this is a one-time reminder, mark as completed
         if (!scheduled.interval || scheduled.interval === null || scheduled.isOneTime) {
-            this.logger.info(`One-time reminder ${id} executed - marking as completed`);
+            const tplName = this.getTemplate(scheduled.templateId)?.name ?? id;
+            this.logger.info(`One-time reminder executed: "${tplName}" - marking as completed`);
             return await this.updateScheduled(id, {
                 status: 'completed',
                 triggerCount: 1

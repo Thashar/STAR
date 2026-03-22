@@ -1035,7 +1035,8 @@ async function handleModalSubmit(interaction, sharedState) {
                 await boardManager.ensureControlPanel();
             }
 
-            logger.success(`Updated template ${templateId}`);
+            const tpl = notificationManager.getTemplate(templateId);
+            logger.success(`Template updated: "${tpl?.name ?? templateId}"`);
         }
         // Edit scheduled
         else if (customId.startsWith('edit_scheduled_modal_')) {
@@ -1096,7 +1097,8 @@ async function handleModalSubmit(interaction, sharedState) {
                 components: []
             });
 
-            logger.success(`Updated scheduled ${scheduledId}`);
+            const updatedTpl = notificationManager.getScheduledWithTemplate(scheduledId);
+            logger.success(`Scheduled reminder updated: "${updatedTpl?.template?.name ?? scheduledId}"`);
         }
         // Add event
         else if (customId === 'add_event_modal') {
@@ -1145,7 +1147,7 @@ async function handleModalSubmit(interaction, sharedState) {
                     content: `✅ **Event created!**\n📅 **Name:** ${name}\n🆔 **ID:** ${event.id}\n⏰ **Next trigger:** <t:${Math.floor(new Date(event.nextTrigger).getTime() / 1000)}:F>`
                 });
 
-                logger.success(`Created event ${event.id}`);
+                logger.success(`Event created: "${event.name}"`);
             } catch (error) {
                 logger.error('Failed to create event:', error);
                 await interaction.editReply({
@@ -1204,7 +1206,7 @@ async function handleModalSubmit(interaction, sharedState) {
                 components: []
             });
 
-            logger.success(`Updated event ${eventId}`);
+            logger.success(`Event updated: "${name}"`);
         }
 
     } catch (error) {
@@ -1374,9 +1376,7 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
 
         // Get scheduled with template for board embed
         const scheduledWithTemplate = notificationManager.getScheduledWithTemplate(scheduled.id);
-        logger.info(`Creating board embed for ${scheduled.id} - has template: ${!!scheduledWithTemplate?.template}`);
         const embedResult = await boardManager.createEmbed(scheduledWithTemplate);
-        logger.info(`Board embed creation result: ${embedResult ? 'success' : 'failed'}`);
 
         userStates.delete(interaction.user.id);
 
@@ -1397,7 +1397,7 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
             components: []
         });
 
-        logger.success(`Created scheduled reminder ${scheduled.id}`);
+        logger.success(`Scheduled reminder created: "${template.name}"`);
     } catch (error) {
         logger.error('Error creating scheduled reminder:', error);
         await interaction.editReply({
@@ -1460,7 +1460,7 @@ async function handleTemplatePreviewApprove(interaction, sharedState) {
         // Update control panel to show new template
         await boardManager.ensureControlPanel();
 
-        logger.success(`Created template ${template.id}`);
+        logger.success(`Template created: "${template.name}"`);
     } catch (error) {
         logger.error('Error creating template:', error);
         await interaction.editReply({
@@ -1912,6 +1912,7 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
     const templateId = interaction.customId.replace('confirm_delete_template_', '');
 
     try {
+        const templateName = notificationManager.getTemplate(templateId)?.name ?? templateId;
         await notificationManager.deleteTemplate(templateId);
 
         await interaction.editReply({
@@ -1923,7 +1924,7 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
         // Update control panel to remove deleted template
         await boardManager.ensureControlPanel();
 
-        logger.success(`Deleted template ${templateId}`);
+        logger.success(`Template deleted: "${templateName}"`);
     } catch (error) {
         logger.error('Error deleting template:', error);
         await interaction.editReply({
@@ -1943,6 +1944,7 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
 
     try {
         const scheduled = notificationManager.getScheduled(scheduledId);
+        const scheduledName = notificationManager.getTemplate(scheduled?.templateId)?.name ?? scheduledId;
         if (scheduled) {
             await boardManager.deleteEmbed(scheduled);
         }
@@ -1955,7 +1957,7 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
             components: []
         });
 
-        logger.success(`Deleted scheduled ${scheduledId}`);
+        logger.success(`Scheduled reminder deleted: "${scheduledName}"`);
     } catch (error) {
         logger.error('Error deleting scheduled:', error);
         await interaction.editReply({
@@ -1974,6 +1976,7 @@ async function handleConfirmDeleteEvent(interaction, sharedState) {
     const eventId = interaction.customId.replace('confirm_delete_event_', '');
 
     try {
+        const eventName = eventManager.getEvent(eventId)?.name ?? eventId;
         await eventManager.deleteEvent(eventId);
 
         // Update events list
@@ -1985,7 +1988,7 @@ async function handleConfirmDeleteEvent(interaction, sharedState) {
             components: []
         });
 
-        logger.success(`Deleted event ${eventId}`);
+        logger.success(`Event deleted: "${eventName}"`);
     } catch (error) {
         logger.error('Error deleting event:', error);
         await interaction.editReply({
@@ -2025,7 +2028,7 @@ async function handleBoardScheduledPause(interaction, sharedState) {
             ephemeral: true
         });
 
-        logger.success(`Paused scheduled ${scheduledId} from board`);
+        logger.success(`Reminder paused: "${updated?.template?.name ?? scheduledId}"`);
     } catch (error) {
         logger.error('Error pausing scheduled:', error);
         await interaction.followUp({
@@ -2054,7 +2057,7 @@ async function handleBoardScheduledResume(interaction, sharedState) {
             ephemeral: true
         });
 
-        logger.success(`Resumed scheduled ${scheduledId} from board`);
+        logger.success(`Reminder resumed: "${updated?.template?.name ?? scheduledId}"`);
     } catch (error) {
         logger.error('Error resuming scheduled:', error);
         await interaction.followUp({
@@ -2167,7 +2170,7 @@ async function handleBoardScheduledPreview(interaction, sharedState) {
 
         await interaction.reply({ content: content || undefined, embeds, ephemeral: true });
 
-        logger.info(`Preview reminder ${scheduledId} by ${interaction.user.tag}`);
+        logger.info(`Reminder preview: "${scheduled.template.name}" by ${interaction.user.tag}`);
     } catch (error) {
         logger.error('Error in handleBoardScheduledPreview:', error);
         await interaction.reply({ content: '❌ Error generating preview.', ephemeral: true });
@@ -2218,7 +2221,7 @@ async function handleBoardScheduledSend(interaction, sharedState) {
 
         await channel.send({ content, embeds });
 
-        logger.info(`Test send reminder ${scheduledId} by ${interaction.user.tag}`);
+        logger.info(`Test send: "${scheduled.template.name}" → #${channel.name} by ${interaction.user.tag}`);
     } catch (error) {
         logger.error('Error in handleBoardScheduledSend:', error);
         await interaction.followUp({ content: '❌ Error sending reminder.', ephemeral: true });
