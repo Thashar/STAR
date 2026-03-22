@@ -275,6 +275,16 @@ class BoardManager {
             inline: true
         });
 
+        // Notification type
+        const notifTypeText = scheduled.notificationType === 1
+            ? '📌 Standardized (auto-delete 23h 50min)'
+            : '📋 Standard';
+        embed.addFields({
+            name: '🏷️ Notification type',
+            value: notifTypeText,
+            inline: true
+        });
+
         // Roles to ping
         if (scheduled.roles && scheduled.roles.length > 0) {
             const rolesText = scheduled.roles.map(r => `<@&${r}>`).join(', ');

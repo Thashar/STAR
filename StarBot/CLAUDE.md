@@ -13,7 +13,8 @@
 
 StarBot is a comprehensive template-based notification management system for Discord servers. It provides:
 - **Notification templates** - Create reusable Text or Embed templates
-- **Scheduled reminders** - Schedule templates with flexible intervals (1s to 28d, or 'ee' pattern)
+- **Scheduled reminders** - Schedule templates with flexible intervals (1s to 60d, or 'ee' pattern)
+- **Notification types** - Standard (type 0) or Standardized (type 1, auto-delete after 23h 50min)
 - **Live notifications board** - All active scheduled reminders displayed on a dedicated channel
 - **Auto-updating embeds** - Notifications update every minute showing time remaining
 
@@ -105,13 +106,13 @@ Schedule a template to be sent repeatedly.
 1. Select template from list (with pagination if >25 templates)
 2. Fill modal:
    - **First trigger**: `YYYY-MM-DD HH:MM` (e.g., "2026-03-20 10:00")
-   - **Interval**: `1s`, `1m`, `1h`, `1d` (max 28d), or `ee` for special pattern
+   - **Interval**: `1s`, `1m`, `1h`, `1d` (max 60d), or `ee` for special pattern
      - Examples: `5m` = every 5 minutes, `1h` = every hour, `1d` = every day
      - Special: `ee` = EE Pattern (8 triggers every 3 days, then 9th trigger after 4 days, repeating cyclically)
-3. Select channel from dropdown
+   - **Type**: `0` = Standard (choose channel) | `1` = Standardized (uses events list channel, auto-delete after 23h 50min)
+3. For type 0: Select channel from dropdown; for type 1: channel auto-set to events list
 4. Select roles to ping (optional, multi-select up to 10)
-5. Preview appears with all data + final message preview
-6. Confirm to create scheduled reminder
+5. Confirm to create scheduled reminder
 
 **Result:**
 - Scheduled reminder created with ID (e.g., `sch_1`)
@@ -209,7 +210,8 @@ Manage templates and scheduled reminders.
    - Manages scheduled reminders (create, read, update, delete)
    - Stores data in `data/notifications.json`
    - Calculates next trigger times
-   - Validates intervals (max 28 days, or 'ee' for special pattern)
+   - Validates intervals (max 60 days, or 'ee' for special pattern)
+   - Handles notification types: 0 = standard, 1 = standardized (auto-delete 23h 50min)
    - Handles dynamic interval calculation for 'ee' pattern (3d x8, then 4d, repeating)
 
 2. **BoardManager** (`services/boardManager.js`)
@@ -537,5 +539,6 @@ await boardManager.createEmbed(scheduled);
 - 2-step: Create template → Schedule it
 - Reusable templates (create once, schedule many times)
 - `/new-reminder`, `/set-reminder`, `/edit-reminder` commands
-- More flexible intervals (1s to 28d) vs. fixed daily/weekly
+- More flexible intervals (1s to 60d) vs. fixed daily/weekly
+- Notification types: Standard (type 0) and Standardized (type 1, auto-delete 23h 50min)
 - Cleaner separation: content (template) vs. timing (scheduled)

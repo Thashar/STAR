@@ -654,13 +654,23 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
         .setCustomId('interval')
         .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 28d), ee')
-        .setRequired(true)
+        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 60d), ee')
+        .setRequired(false)
         .setMaxLength(10);
+
+    const typeInput = new TextInputBuilder()
+        .setCustomId('type')
+        .setLabel('Type: 0 = standard | 1 = standardized (auto-delete 23h50m)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('0 or 1')
+        .setValue('0')
+        .setRequired(true)
+        .setMaxLength(1);
 
     modal.addComponents(
         new ActionRowBuilder().addComponents(firstTriggerInput),
-        new ActionRowBuilder().addComponents(intervalInput)
+        new ActionRowBuilder().addComponents(intervalInput),
+        new ActionRowBuilder().addComponents(typeInput)
     );
 
     await interaction.showModal(modal);
@@ -918,6 +928,15 @@ async function handleModalSubmit(interaction, sharedState) {
             const templateId = customId.replace('set_reminder_modal_', '');
             const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
             const interval = interaction.fields.getTextInputValue('interval');
+            const type = interaction.fields.getTextInputValue('type');
+
+            // Validate type
+            if (type !== '0' && type !== '1') {
+                await interaction.editReply({
+                    content: '❌ Invalid type. Use: 0 (standard) or 1 (standardized)'
+                });
+                return;
+            }
 
             // Parse firstTrigger
             const firstTrigger = new Date(firstTriggerStr);
@@ -938,7 +957,7 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder.'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 60d), "ee", or leave empty for one-time reminder.'
                 });
                 return;
             }
@@ -946,37 +965,85 @@ async function handleModalSubmit(interaction, sharedState) {
             // If interval provided, check limit
             if (interval && interval.trim() !== '') {
                 const intervalMs = notificationManager.parseInterval(interval);
-                const maxInterval = 28 * 24 * 60 * 60 * 1000;
+                const maxInterval = 60 * 24 * 60 * 60 * 1000;
                 if (intervalMs && intervalMs > maxInterval) {
                     await interaction.editReply({
-                        content: '❌ Interval cannot exceed 28 days.'
+                        content: '❌ Interval cannot exceed 60 days.'
                     });
                     return;
                 }
             }
 
-            // Store in user state for channel/role selection
             const sessionId = Date.now().toString();
-            userStates.set(interaction.user.id, {
-                sessionId,
-                templateId,
-                firstTrigger: firstTrigger.toISOString(),
-                interval,
-                step: 'select_channel'
-            });
 
-            // Show channel select
-            const channelSelect = new ChannelSelectMenuBuilder()
-                .setCustomId(`set_reminder_channel_${sessionId}`)
-                .setPlaceholder('Select channel for reminders')
-                .setChannelTypes([ChannelType.GuildText]);
+            // TYPE 1 = STANDARDIZED (auto-delete after 23h 50min, channel from events list)
+            if (type === '1') {
+                const { eventListManager } = sharedState;
+                const eventListChannelId = eventListManager ? eventListManager.getListChannelId() : null;
 
-            const row = new ActionRowBuilder().addComponents(channelSelect);
+                if (!eventListChannelId) {
+                    await interaction.editReply({
+                        content: '❌ Events list channel is not set. Use type 0 (standard) or set the events list channel first.'
+                    });
+                    return;
+                }
 
-            await interaction.editReply({
-                content: '**Step 2/3:** Select the channel where notifications will be sent',
-                components: [row]
-            });
+                // Store in user state with channel already set
+                userStates.set(interaction.user.id, {
+                    sessionId,
+                    templateId,
+                    firstTrigger: firstTrigger.toISOString(),
+                    interval,
+                    channelId: eventListChannelId,
+                    notificationType: 1,
+                    step: 'select_roles'
+                });
+
+                // Show role select directly (no channel selection)
+                const roleSelect = new RoleSelectMenuBuilder()
+                    .setCustomId(`set_reminder_roles_${sessionId}`)
+                    .setPlaceholder('Select roles to ping (optional)')
+                    .setMinValues(0)
+                    .setMaxValues(10);
+
+                const skipButton = new ButtonBuilder()
+                    .setCustomId(`set_reminder_skip_roles_${sessionId}`)
+                    .setLabel('Skip - no pings')
+                    .setStyle(ButtonStyle.Secondary);
+
+                const row1 = new ActionRowBuilder().addComponents(roleSelect);
+                const row2 = new ActionRowBuilder().addComponents(skipButton);
+
+                await interaction.editReply({
+                    content: `**Step 2/2:** Select roles to ping (optional)\n📍 **Channel:** <#${eventListChannelId}> (Events List)\n🗑️ **Auto-delete:** 23h 50min after sending`,
+                    components: [row1, row2]
+                });
+            }
+            // TYPE 0 = STANDARD (choose channel + roles)
+            else {
+                // Store in user state for channel/role selection
+                userStates.set(interaction.user.id, {
+                    sessionId,
+                    templateId,
+                    firstTrigger: firstTrigger.toISOString(),
+                    interval,
+                    notificationType: 0,
+                    step: 'select_channel'
+                });
+
+                // Show channel select
+                const channelSelect = new ChannelSelectMenuBuilder()
+                    .setCustomId(`set_reminder_channel_${sessionId}`)
+                    .setPlaceholder('Select channel for reminders')
+                    .setChannelTypes([ChannelType.GuildText]);
+
+                const row = new ActionRowBuilder().addComponents(channelSelect);
+
+                await interaction.editReply({
+                    content: '**Step 2/3:** Select the channel where notifications will be sent',
+                    components: [row]
+                });
+            }
         }
         // Edit template
         else if (customId.startsWith('edit_template_modal_')) {
@@ -1062,18 +1129,19 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), "ee", or leave empty for one-time reminder.'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 60d), "ee", or leave empty for one-time reminder.'
                 });
                 return;
             }
 
             // If interval provided, check limit
+            let newIntervalMs = null;
             if (interval && interval.trim() !== '') {
-                const intervalMs = notificationManager.parseInterval(interval);
-                const maxInterval = 28 * 24 * 60 * 60 * 1000;
-                if (intervalMs && intervalMs > maxInterval) {
+                newIntervalMs = notificationManager.parseInterval(interval);
+                const maxInterval = 60 * 24 * 60 * 60 * 1000;
+                if (newIntervalMs && newIntervalMs > maxInterval) {
                     await interaction.editReply({
-                        content: '❌ Interval cannot exceed 28 days.'
+                        content: '❌ Interval cannot exceed 60 days.'
                     });
                     return;
                 }
@@ -1082,7 +1150,7 @@ async function handleModalSubmit(interaction, sharedState) {
             await notificationManager.updateScheduled(scheduledId, {
                 firstTrigger: firstTrigger.toISOString(),
                 interval,
-                intervalMs,
+                intervalMs: newIntervalMs,
                 nextTrigger: firstTrigger.toISOString()
             });
 
@@ -1369,7 +1437,8 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
             userState.firstTrigger,
             userState.interval,
             userState.channelId,
-            userState.roles || []
+            userState.roles || [],
+            userState.notificationType || 0
         );
 
         // Get scheduled with template for board embed
@@ -1384,13 +1453,18 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
         const nextTriggerDate = new Date(scheduled.nextTrigger);
         const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
 
+        const notificationTypeText = (userState.notificationType || 0) === 1
+            ? '📌 Standardized (auto-delete 23h 50min)'
+            : '📋 Standard';
+
         let content = '✅ **Scheduled reminder created!**\n\n';
         content += `⏰ **ID:** ${scheduled.id}\n`;
         content += `📝 **Template:** ${template.name}\n`;
         content += `📅 **First trigger:** <t:${nextTriggerTimestamp}:F>\n`;
         content += `🔄 **Interval:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
         content += `📍 **Channel:** <#${userState.channelId}>\n`;
-        content += `👥 **Roles:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'None'}`;
+        content += `👥 **Roles:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'None'}\n`;
+        content += `🏷️ **Type:** ${notificationTypeText}`;
 
         await interaction.editReply({
             content,
