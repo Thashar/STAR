@@ -535,27 +535,33 @@ class BoardManager {
         const guildId = this.boardChannel?.guild?.id;
         const boardChannelId = this.boardChannel?.id;
 
-        const buildScheduledLines = (list) => {
-            if (list.length === 0) return '_None_';
-            const lines = [];
-            let total = 0;
-            for (const s of list) {
-                const name = s.template?.name ?? 'Unknown template';
-                const link = s.boardMessageId && guildId && boardChannelId
-                    ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
-                    : '🔗 Details';
-                const timestamp = s.nextTrigger
-                    ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
-                    : '';
-                const line = `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
-                if (total + line.length + 1 > 1020) {
-                    lines.push(`_...and ${list.length - lines.length} more_`);
-                    break;
-                }
-                lines.push(line);
-                total += line.length + 1;
+        const CHUNK_SIZE = 10;
+
+        const buildCategoryFields = (list, emoji, label) => {
+            if (list.length === 0) {
+                return [{ name: `${emoji} ${label} (0)`, value: '_None_', inline: false }];
             }
-            return lines.join('\n');
+            const fields = [];
+            for (let i = 0; i < list.length; i += CHUNK_SIZE) {
+                const chunk = list.slice(i, i + CHUNK_SIZE);
+                const value = chunk.map(s => {
+                    const name = s.template?.name ?? 'Unknown template';
+                    const link = s.boardMessageId && guildId && boardChannelId
+                        ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
+                        : '🔗 Details';
+                    const timestamp = s.nextTrigger
+                        ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
+                        : '';
+                    return `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
+                }).join('\n');
+                const totalPages = Math.ceil(list.length / CHUNK_SIZE);
+                const pageNum = Math.floor(i / CHUNK_SIZE) + 1;
+                const fieldName = totalPages > 1
+                    ? `${emoji} ${label} (${list.length}) — ${pageNum}/${totalPages}`
+                    : `${emoji} ${label} (${list.length})`;
+                fields.push({ name: fieldName, value, inline: false });
+            }
+            return fields;
         };
 
         const recurring = allScheduled.filter(s => s.status === 'active' && s.interval && !s.isOneTime);
@@ -564,32 +570,22 @@ class BoardManager {
 
         const activeScheduled = allScheduled.filter(s => s.status === 'active');
 
+        const dynamicFields = [
+            {
+                name: '📊 Statistics',
+                value: `📚 Templates: **${templates.length}**\n🔔 Active notifications: **${activeScheduled.length}**\n📅 Events: **${events.length}**`,
+                inline: false
+            },
+            ...buildCategoryFields(recurring, '🔄', 'Active recurring notifications'),
+            ...buildCategoryFields(oneTime, '⏰', 'One-time notifications'),
+            ...buildCategoryFields(paused, '⏸️', 'Paused notifications'),
+        ];
+
         const embed = new EmbedBuilder()
             .setColor(0xED4245) // Red
             .setTitle('📋 Reminders & Events Control Panel')
             .setDescription(`${eventsChannelText}`)
-            .addFields(
-                {
-                    name: '📊 Statistics',
-                    value: `📚 Templates: **${templates.length}**\n🔔 Active notifications: **${activeScheduled.length}**\n📅 Events: **${events.length}**`,
-                    inline: false
-                },
-                {
-                    name: `🔄 Active recurring notifications (${recurring.length})`,
-                    value: buildScheduledLines(recurring),
-                    inline: false
-                },
-                {
-                    name: `⏰ One-time notifications (${oneTime.length})`,
-                    value: buildScheduledLines(oneTime),
-                    inline: false
-                },
-                {
-                    name: `⏸️ Paused notifications (${paused.length})`,
-                    value: buildScheduledLines(paused),
-                    inline: false
-                }
-            )
+            .addFields(dynamicFields)
             .setFooter({ text: 'Reminder System' });
 
         const row1 = new ActionRowBuilder()
