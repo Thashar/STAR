@@ -537,7 +537,9 @@ class BoardManager {
 
         const buildScheduledLines = (list) => {
             if (list.length === 0) return '_None_';
-            return list.map(s => {
+            const lines = [];
+            let total = 0;
+            for (const s of list) {
                 const name = s.template?.name ?? 'Unknown template';
                 const link = s.boardMessageId && guildId && boardChannelId
                     ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
@@ -545,8 +547,15 @@ class BoardManager {
                 const timestamp = s.nextTrigger
                     ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
                     : '';
-                return `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
-            }).join('\n');
+                const line = `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
+                if (total + line.length + 1 > 1020) {
+                    lines.push(`_...and ${list.length - lines.length} more_`);
+                    break;
+                }
+                lines.push(line);
+                total += line.length + 1;
+            }
+            return lines.join('\n');
         };
 
         const recurring = allScheduled.filter(s => s.status === 'active' && s.interval && !s.isOneTime);
