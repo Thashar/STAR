@@ -454,6 +454,21 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    if (customId.startsWith('edit_scheduled_channel_') && !customId.includes('_select_')) {
+        await handleEditScheduledChannel(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_scheduled_pings_') && !customId.includes('_select_') && !customId.includes('_skip_')) {
+        await handleEditScheduledPings(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_scheduled_pings_skip_')) {
+        await handleEditScheduledPingsSkip(interaction, sharedState);
+        return;
+    }
+
     if (customId.startsWith('edit_scheduled_delete_')) {
         await handleEditScheduledDelete(interaction, sharedState);
         return;
@@ -830,6 +845,29 @@ async function handleChannelSelectMenu(interaction, sharedState) {
         });
     }
 
+    if (customId.startsWith('edit_scheduled_channel_select_')) {
+        const { notificationManager, boardManager, logger } = sharedState;
+
+        const scheduledId = customId.replace('edit_scheduled_channel_select_', '');
+        const selectedChannel = interaction.channels.first();
+
+        await interaction.deferUpdate();
+
+        await notificationManager.updateScheduled(scheduledId, { channelId: selectedChannel.id });
+
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateEmbed(updated);
+        await boardManager.updateControlPanel();
+
+        logger.success(`Updated channel for scheduled ${scheduledId} to ${selectedChannel.name}`);
+
+        await interaction.editReply({
+            content: `✅ Channel updated for reminder \`${scheduledId}\`.\n📍 **New channel:** <#${selectedChannel.id}>`,
+            components: []
+        });
+        return;
+    }
+
     if (customId === 'event_list_channel_select') {
         const { eventListManager, boardManager, logger } = sharedState;
 
@@ -892,6 +930,30 @@ async function handleRoleSelectMenu(interaction, sharedState) {
         userState.roles = selectedRoles;
 
         await createScheduledFromUserState(interaction, sharedState, userState);
+    }
+
+    if (customId.startsWith('edit_scheduled_pings_select_')) {
+        const { notificationManager, boardManager, logger } = sharedState;
+
+        const scheduledId = customId.replace('edit_scheduled_pings_select_', '');
+        const selectedRoles = interaction.roles.map(r => r.id);
+
+        await interaction.deferUpdate();
+
+        await notificationManager.updateScheduled(scheduledId, { roles: selectedRoles });
+
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateEmbed(updated);
+        await boardManager.updateControlPanel();
+
+        logger.success(`Updated pings for scheduled ${scheduledId}`);
+
+        const pingsText = selectedRoles.length > 0 ? selectedRoles.map(r => `<@&${r}>`).join(', ') : 'None';
+
+        await interaction.editReply({
+            content: `✅ Pings updated for reminder \`${scheduledId}\`.\n👥 **New pings:** ${pingsText}`,
+            components: []
+        });
     }
 }
 
@@ -1444,13 +1506,27 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
         embeds.push(embed);
     }
 
-    const row = new ActionRowBuilder()
+    const row1 = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
                 .setCustomId(`edit_scheduled_edit_${scheduled.id}`)
-                .setLabel('Edit')
+                .setLabel('Edit time & interval')
                 .setStyle(ButtonStyle.Primary)
                 .setEmoji('✏️'),
+            new ButtonBuilder()
+                .setCustomId(`edit_scheduled_channel_${scheduled.id}`)
+                .setLabel('Edit channel')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('📍'),
+            new ButtonBuilder()
+                .setCustomId(`edit_scheduled_pings_${scheduled.id}`)
+                .setLabel('Edit pings')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('👥')
+        );
+
+    const row2 = new ActionRowBuilder()
+        .addComponents(
             new ButtonBuilder()
                 .setCustomId(`edit_scheduled_delete_${scheduled.id}`)
                 .setLabel('Delete')
@@ -1461,7 +1537,7 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
     await interaction.update({
         content,
         embeds,
-        components: [row]
+        components: [row1, row2]
     });
 }
 
@@ -1990,6 +2066,87 @@ async function handleEditScheduledEdit(interaction, sharedState) {
     );
 
     await interaction.showModal(modal);
+}
+
+async function handleEditScheduledChannel(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduledId = interaction.customId.replace('edit_scheduled_channel_', '');
+    const scheduled = notificationManager.getScheduled(scheduledId);
+
+    if (!scheduled) {
+        await interaction.update({ content: '❌ Scheduled reminder not found.', components: [] });
+        return;
+    }
+
+    const channelSelect = new ChannelSelectMenuBuilder()
+        .setCustomId(`edit_scheduled_channel_select_${scheduledId}`)
+        .setPlaceholder('Select new channel')
+        .setChannelTypes(ChannelType.GuildText);
+
+    await interaction.update({
+        content: `📍 **Select new channel for reminder \`${scheduledId}\`:**\n> Current: <#${scheduled.channelId}>`,
+        embeds: [],
+        components: [new ActionRowBuilder().addComponents(channelSelect)]
+    });
+}
+
+async function handleEditScheduledPings(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const scheduledId = interaction.customId.replace('edit_scheduled_pings_', '');
+    const scheduled = notificationManager.getScheduled(scheduledId);
+
+    if (!scheduled) {
+        await interaction.update({ content: '❌ Scheduled reminder not found.', components: [] });
+        return;
+    }
+
+    const currentPings = scheduled.roles.length > 0
+        ? scheduled.roles.map(r => `<@&${r}>`).join(', ')
+        : 'None';
+
+    const roleSelect = new RoleSelectMenuBuilder()
+        .setCustomId(`edit_scheduled_pings_select_${scheduledId}`)
+        .setPlaceholder('Select roles to ping')
+        .setMinValues(0)
+        .setMaxValues(10);
+
+    const skipButton = new ButtonBuilder()
+        .setCustomId(`edit_scheduled_pings_skip_${scheduledId}`)
+        .setLabel('Clear pings')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🚫');
+
+    await interaction.update({
+        content: `👥 **Select roles to ping for reminder \`${scheduledId}\`:**\n> Current: ${currentPings}`,
+        embeds: [],
+        components: [
+            new ActionRowBuilder().addComponents(roleSelect),
+            new ActionRowBuilder().addComponents(skipButton)
+        ]
+    });
+}
+
+async function handleEditScheduledPingsSkip(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const scheduledId = interaction.customId.replace('edit_scheduled_pings_skip_', '');
+
+    await notificationManager.updateScheduled(scheduledId, { roles: [] });
+
+    const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+    await boardManager.updateEmbed(updated);
+    await boardManager.updateControlPanel();
+
+    logger.success(`Cleared pings for scheduled ${scheduledId}`);
+
+    await interaction.editReply({
+        content: `✅ Pings cleared for reminder \`${scheduledId}\`.`,
+        components: []
+    });
 }
 
 async function handleEditScheduledDelete(interaction, sharedState) {
