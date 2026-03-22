@@ -2180,6 +2180,14 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
     const templateId = interaction.customId.replace('confirm_delete_template_', '');
 
     try {
+        // Collect affected scheduled reminders BEFORE deleting from JSON
+        const affectedScheduled = notificationManager.getAllScheduled().filter(s => s.templateId === templateId);
+
+        // Delete their Discord board embeds first
+        for (const sch of affectedScheduled) {
+            await boardManager.deleteEmbed(sch);
+        }
+
         await notificationManager.deleteTemplate(templateId);
 
         await interaction.editReply({
@@ -2191,7 +2199,7 @@ async function handleConfirmDeleteTemplate(interaction, sharedState) {
         // Update control panel to remove deleted template
         await boardManager.ensureControlPanel();
 
-        logger.success(`Deleted template ${templateId}`);
+        logger.success(`Deleted template ${templateId} and ${affectedScheduled.length} associated scheduled reminder(s)`);
     } catch (error) {
         logger.error('Error deleting template:', error);
         await interaction.editReply({
@@ -2222,6 +2230,8 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
             embeds: [],
             components: []
         });
+
+        await boardManager.ensureControlPanel();
 
         logger.success(`Deleted scheduled ${scheduledId}`);
     } catch (error) {
