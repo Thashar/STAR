@@ -535,33 +535,47 @@ class BoardManager {
         const guildId = this.boardChannel?.guild?.id;
         const boardChannelId = this.boardChannel?.id;
 
-        const CHUNK_SIZE = 10;
-
         const buildCategoryFields = (list, emoji, label) => {
             if (list.length === 0) {
                 return [{ name: `${emoji} ${label} (0)`, value: '_None_', inline: false }];
             }
-            const fields = [];
-            for (let i = 0; i < list.length; i += CHUNK_SIZE) {
-                const chunk = list.slice(i, i + CHUNK_SIZE);
-                const value = chunk.map(s => {
-                    const name = s.template?.name ?? 'Unknown template';
-                    const link = s.boardMessageId && guildId && boardChannelId
-                        ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
-                        : '🔗 Details';
-                    const timestamp = s.nextTrigger
-                        ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
-                        : '';
-                    return `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
-                }).join('\n');
-                const totalPages = Math.ceil(list.length / CHUNK_SIZE);
-                const pageNum = Math.floor(i / CHUNK_SIZE) + 1;
-                const fieldName = totalPages > 1
-                    ? `${emoji} ${label} (${list.length}) — ${pageNum}/${totalPages}`
-                    : `${emoji} ${label} (${list.length})`;
-                fields.push({ name: fieldName, value, inline: false });
+
+            const allLines = list.map(s => {
+                const name = s.template?.name ?? 'Unknown template';
+                const link = s.boardMessageId && guildId && boardChannelId
+                    ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
+                    : '🔗 Details';
+                const timestamp = s.nextTrigger
+                    ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
+                    : '';
+                return `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
+            });
+
+            const MAX_VALUE_LENGTH = 1000;
+            const chunks = [];
+            let currentChunk = [];
+            let currentLength = 0;
+
+            for (const line of allLines) {
+                const lineLength = line.length + 1; // +1 for newline
+                if (currentChunk.length > 0 && currentLength + lineLength > MAX_VALUE_LENGTH) {
+                    chunks.push(currentChunk);
+                    currentChunk = [line];
+                    currentLength = lineLength;
+                } else {
+                    currentChunk.push(line);
+                    currentLength += lineLength;
+                }
             }
-            return fields;
+            if (currentChunk.length > 0) chunks.push(currentChunk);
+
+            return chunks.map((chunk, i) => ({
+                name: chunks.length > 1
+                    ? `${emoji} ${label} (${list.length}) — ${i + 1}/${chunks.length}`
+                    : `${emoji} ${label} (${list.length})`,
+                value: chunk.join('\n'),
+                inline: false
+            }));
         };
 
         const recurring = allScheduled.filter(s => s.status === 'active' && s.interval && !s.isOneTime);
@@ -579,7 +593,7 @@ class BoardManager {
             ...buildCategoryFields(recurring, '🔄', 'Active recurring notifications'),
             ...buildCategoryFields(oneTime, '⏰', 'One-time notifications'),
             ...buildCategoryFields(paused, '⏸️', 'Paused notifications'),
-        ];
+        ].slice(0, 25); // Discord embed max 25 fields
 
         const embed = new EmbedBuilder()
             .setColor(0xED4245) // Red
