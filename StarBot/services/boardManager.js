@@ -213,10 +213,14 @@ class BoardManager {
     async buildEmbed(scheduled) {
         const template = scheduled.template;
 
-        // Use template color if available (for embed type), otherwise default
-        let color = 0x5865F2; // Default Blurple
-        if (template.type === 'embed' && template.embedColor) {
-            color = parseInt(template.embedColor, 16);
+        // Color based on status and reminder type
+        let color;
+        if (scheduled.status === 'paused') {
+            color = 0xFEA500; // Orange - paused
+        } else if (scheduled.isOneTime || !scheduled.interval) {
+            color = 0x5865F2; // Blue - one-time
+        } else {
+            color = 0x57F287; // Green - recurring
         }
 
         const embed = new EmbedBuilder()
@@ -322,6 +326,18 @@ class BoardManager {
         }
         embed.setFooter({ text: `Created by ${creatorName}` });
 
+        // Link to control panel in footer
+        if (this.controlPanelMessageId && this.boardChannel) {
+            const guildId = this.boardChannel.guild?.id;
+            const channelId = this.boardChannel.id;
+            const panelUrl = `https://discord.com/channels/${guildId}/${channelId}/${this.controlPanelMessageId}`;
+            embed.addFields({
+                name: '\u200b',
+                value: `[➡️ Go to Panel](${panelUrl})`,
+                inline: false
+            });
+        }
+
         return embed;
     }
 
@@ -425,26 +441,18 @@ class BoardManager {
                 }
             }
 
-            // STEP 3: If panel exists - update it
+            // STEP 3: If panel exists - delete it, so we can send new one at bottom
             if (existingPanel) {
                 try {
-                    const controlPanel = await this.buildControlPanel();
-                    await existingPanel.edit(controlPanel);
-                    await this.saveControlPanelMessageId(existingPanel.id);
-                    this.logger.success('Control panel found and updated');
-                    return;
+                    await existingPanel.delete();
+                    this.logger.info('Deleted old control panel - will send new one at bottom');
                 } catch (error) {
-                    this.logger.warn('Failed to update existing control panel, will delete and create new:', error.message);
-                    try {
-                        await existingPanel.delete();
-                        this.logger.info('Deleted old control panel that failed to update');
-                    } catch (deleteError) {
-                        this.logger.warn('Failed to delete old control panel:', deleteError.message);
-                    }
+                    this.logger.warn('Failed to delete old control panel:', error.message);
                 }
+                await this.saveControlPanelMessageId(null);
             }
 
-            // STEP 4: No panel exists - create new one
+            // STEP 4: Panel doesn't exist - create new one
             const controlPanel = await this.buildControlPanel();
             const message = await this.boardChannel.send(controlPanel);
             await this.saveControlPanelMessageId(message.id);
@@ -510,9 +518,6 @@ class BoardManager {
 
     // Build control panel with info
     async buildControlPanel() {
-        const currentTimezone = this.timezoneManager.getGlobalTimezone();
-        const currentTime = this.timezoneManager.getCurrentTime();
-
         // Get events list channel
         const eventsChannelId = this.eventManager.getListChannelId();
         let eventsChannelText = '';
@@ -522,59 +527,59 @@ class BoardManager {
             eventsChannelText = `📋 **Events List Channel:** _Not set (use "Put a List" button)_\n`;
         }
 
-        // Get all templates
+        // Get statistics
         const templates = this.notificationManager.getAllTemplates();
-        let templatesText = '';
+        const allScheduled = this.notificationManager.getAllScheduledWithTemplates();
+        const events = this.eventManager.getAllEvents();
 
-        if (templates.length === 0) {
-            templatesText = '_No templates yet. Create one with `/new-reminder`_';
-        } else {
-            // Fetch creator names for all templates
-            const templateLines = await Promise.all(templates.map(async (t) => {
-                const typeIcon = t.type === 'text' ? '📝' : '📋';
-                const createdDate = new Date(t.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                });
+        const guildId = this.boardChannel?.guild?.id;
+        const boardChannelId = this.boardChannel?.id;
 
-                // Get creator's nickname from guild
-                let creatorName = 'Unknown';
-                if (this.boardChannel && this.boardChannel.guild) {
-                    try {
-                        // Try cache first, then fetch if not found
-                        let member = this.boardChannel.guild.members.cache.get(t.creator);
-                        if (!member) {
-                            member = await this.boardChannel.guild.members.fetch(t.creator);
-                        }
-                        if (member) {
-                            creatorName = member.displayName;
-                        }
-                    } catch (error) {
-                        // User might have left the server or ID is invalid
-                        this.logger.warn(`Failed to fetch member ${t.creator}: ${error.message}`);
-                    }
-                }
+        const buildScheduledLines = (list) => {
+            if (list.length === 0) return '_None_';
+            return list.map(s => {
+                const name = s.template?.name ?? 'Unknown template';
+                const link = s.boardMessageId && guildId && boardChannelId
+                    ? `[🔗 Details](https://discord.com/channels/${guildId}/${boardChannelId}/${s.boardMessageId})`
+                    : '🔗 Details';
+                const timestamp = s.nextTrigger
+                    ? `<t:${Math.floor(new Date(s.nextTrigger).getTime() / 1000)}:R>`
+                    : '';
+                return `**${name}**:${timestamp ? ' ' + timestamp : ''} ${link}`;
+            }).join('\n');
+        };
 
-                return `${typeIcon} **${t.name}** - ${creatorName} - ${createdDate}`;
-            }));
+        const recurring = allScheduled.filter(s => s.status === 'active' && s.interval && !s.isOneTime);
+        const oneTime   = allScheduled.filter(s => s.status === 'active' && (!s.interval || s.isOneTime));
+        const paused    = allScheduled.filter(s => s.status === 'paused');
 
-            templatesText = templateLines.join('\n');
-        }
+        const activeScheduled = allScheduled.filter(s => s.status === 'active');
 
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2) // Blurple
+            .setColor(0xED4245) // Red
             .setTitle('📋 Reminders & Events Control Panel')
-            .setDescription(
-                '**How to use:**\n' +
-                'Use the buttons below to manage reminders and events.\n\n' +
-                '**Reminders:** Create templates → Schedule with interval → Auto-send to channels\n' +
-                '**Events:** Add events → They appear on the events list channel\n\n' +
-                `🕐 **Current timezone:** ${currentTimezone}\n` +
-                `⏰ **Current time:** ${currentTime}\n` +
-                `${eventsChannelText}\n` +
-                `**📚 Available Templates (${templates.length}):**\n${templatesText}\n\n` +
-                'All active reminders will appear above this panel.'
+            .setDescription(`${eventsChannelText}`)
+            .addFields(
+                {
+                    name: '📊 Statistics',
+                    value: `📚 Templates: **${templates.length}**\n🔔 Active notifications: **${activeScheduled.length}**\n📅 Events: **${events.length}**`,
+                    inline: false
+                },
+                {
+                    name: `🔄 Active recurring notifications (${recurring.length})`,
+                    value: buildScheduledLines(recurring),
+                    inline: false
+                },
+                {
+                    name: `⏰ One-time notifications (${oneTime.length})`,
+                    value: buildScheduledLines(oneTime),
+                    inline: false
+                },
+                {
+                    name: `⏸️ Paused notifications (${paused.length})`,
+                    value: buildScheduledLines(paused),
+                    inline: false
+                }
             )
             .setFooter({ text: 'Reminder System' });
 
@@ -631,11 +636,12 @@ class BoardManager {
 
     // Build action buttons for scheduled reminder
     buildActionButtons(scheduled) {
-        const row = new ActionRowBuilder();
+        const row1 = new ActionRowBuilder();
+        const row2 = new ActionRowBuilder();
 
-        // Pause/Resume button
+        // Row 1: Pause/Resume, Edit, Delete
         if (scheduled.status === 'active') {
-            row.addComponents(
+            row1.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`scheduled_pause_${scheduled.id}`)
                     .setLabel('Pause')
@@ -643,7 +649,7 @@ class BoardManager {
                     .setEmoji('⏸️')
             );
         } else if (scheduled.status === 'paused') {
-            row.addComponents(
+            row1.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`scheduled_resume_${scheduled.id}`)
                     .setLabel('Resume')
@@ -652,17 +658,12 @@ class BoardManager {
             );
         }
 
-        // Edit button
-        row.addComponents(
+        row1.addComponents(
             new ButtonBuilder()
                 .setCustomId(`scheduled_edit_${scheduled.id}`)
                 .setLabel('Edit')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('✏️')
-        );
-
-        // Delete button
-        row.addComponents(
+                .setEmoji('✏️'),
             new ButtonBuilder()
                 .setCustomId(`scheduled_delete_${scheduled.id}`)
                 .setLabel('Delete')
@@ -670,7 +671,21 @@ class BoardManager {
                 .setEmoji('🗑️')
         );
 
-        return [row];
+        // Row 2: Send, Preview
+        row2.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`scheduled_send_${scheduled.id}`)
+                .setLabel('Send')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('📨'),
+            new ButtonBuilder()
+                .setCustomId(`scheduled_preview_${scheduled.id}`)
+                .setLabel('Preview')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('👁️')
+        );
+
+        return [row1, row2];
     }
 }
 

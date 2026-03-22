@@ -443,6 +443,16 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    if (customId.startsWith('scheduled_preview_')) {
+        await handleBoardScheduledPreview(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('scheduled_send_')) {
+        await handleBoardScheduledSend(interaction, sharedState);
+        return;
+    }
+
     // Confirm delete
     if (customId.startsWith('confirm_delete_template_')) {
         await handleConfirmDeleteTemplate(interaction, sharedState);
@@ -2117,6 +2127,100 @@ async function handleBoardScheduledDelete(interaction, sharedState) {
         components: [row],
         ephemeral: true
     });
+}
+
+async function handleBoardScheduledPreview(interaction, sharedState) {
+    const { notificationManager, logger } = sharedState;
+
+    const scheduledId = interaction.customId.replace('scheduled_preview_', '');
+    const scheduled = notificationManager.getScheduledWithTemplate(scheduledId);
+
+    if (!scheduled || !scheduled.template) {
+        await interaction.reply({ content: '❌ Reminder or template not found.', ephemeral: true });
+        return;
+    }
+
+    try {
+        const template = scheduled.template;
+        let content = '';
+        const embeds = [];
+
+        if (scheduled.roles && scheduled.roles.length > 0) {
+            content += scheduled.roles.map(r => `<@&${r}>`).join(' ') + '\n\n';
+        }
+
+        if (template.type === 'text') {
+            content += template.text;
+        } else if (template.type === 'embed') {
+            const colorHex = parseInt(template.embedColor || '5865F2', 16);
+            const embed = new EmbedBuilder()
+                .setDescription(template.embedDescription)
+                .setColor(colorHex)
+                .setTimestamp();
+
+            if (template.embedTitle) embed.setTitle(template.embedTitle);
+            if (template.embedIcon) embed.setThumbnail(template.embedIcon);
+            embeds.push(embed);
+        }
+
+        await interaction.reply({ content: content || undefined, embeds, ephemeral: true });
+
+        logger.info(`Preview reminder ${scheduledId} by ${interaction.user.tag}`);
+    } catch (error) {
+        logger.error('Error in handleBoardScheduledPreview:', error);
+        await interaction.reply({ content: '❌ Error generating preview.', ephemeral: true });
+    }
+}
+
+async function handleBoardScheduledSend(interaction, sharedState) {
+    const { notificationManager, logger, client } = sharedState;
+
+    await interaction.deferUpdate();
+
+    const scheduledId = interaction.customId.replace('scheduled_send_', '');
+    const scheduled = notificationManager.getScheduledWithTemplate(scheduledId);
+
+    if (!scheduled || !scheduled.template) {
+        await interaction.followUp({ content: '❌ Reminder or template not found.', ephemeral: true });
+        return;
+    }
+
+    try {
+        const channel = await client.channels.fetch(scheduled.channelId);
+        if (!channel) {
+            await interaction.followUp({ content: '❌ Target channel not found.', ephemeral: true });
+            return;
+        }
+
+        let content = '';
+        const embeds = [];
+
+        if (scheduled.roles && scheduled.roles.length > 0) {
+            content += scheduled.roles.map(r => `<@&${r}>`).join(' ') + '\n\n';
+        }
+
+        const template = scheduled.template;
+        if (template.type === 'text') {
+            content += template.text;
+        } else if (template.type === 'embed') {
+            const colorHex = parseInt(template.embedColor || '5865F2', 16);
+            const embed = new EmbedBuilder()
+                .setDescription(template.embedDescription)
+                .setColor(colorHex)
+                .setTimestamp();
+
+            if (template.embedTitle) embed.setTitle(template.embedTitle);
+            if (template.embedIcon) embed.setThumbnail(template.embedIcon);
+            embeds.push(embed);
+        }
+
+        await channel.send({ content, embeds });
+
+        logger.info(`Test send reminder ${scheduledId} by ${interaction.user.tag}`);
+    } catch (error) {
+        logger.error('Error in handleBoardScheduledSend:', error);
+        await interaction.followUp({ content: '❌ Error sending reminder.', ephemeral: true });
+    }
 }
 
 // ==================== EVENT SELECT HANDLERS ====================
