@@ -2231,6 +2231,8 @@ async function handleConfirmDeleteScheduled(interaction, sharedState) {
             components: []
         });
 
+        await boardManager.ensureControlPanel();
+
         logger.success(`Deleted scheduled ${scheduledId}`);
     } catch (error) {
         logger.error('Error deleting scheduled:', error);
