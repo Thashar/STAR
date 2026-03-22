@@ -42,6 +42,7 @@ class Scheduler {
 
     async checkScheduled(now) {
         const scheduled = this.notificationManager.getActiveScheduled();
+        let anyTriggered = false;
 
         for (const sch of scheduled) {
             const nextTriggerTime = new Date(sch.nextTrigger);
@@ -60,12 +61,19 @@ class Scheduler {
                     await this.boardManager.deleteEmbed(sch);
                     this.logger.info(`Triggered one-time reminder: ${sch.id} - removed from board`);
                 } else {
-                    // Recurring - update board embed
+                    // Recurring - update board embed with new next trigger
                     const updatedScheduled = this.notificationManager.getScheduledWithTemplate(sch.id);
                     await this.boardManager.updateEmbed(updatedScheduled);
                     this.logger.info(`Triggered recurring reminder: ${sch.id}`);
                 }
+
+                anyTriggered = true;
             }
+        }
+
+        // Update control panel after any trigger to reflect new order and timestamps
+        if (anyTriggered) {
+            await this.boardManager.updateControlPanel();
         }
     }
 
