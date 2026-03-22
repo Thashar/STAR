@@ -2018,6 +2018,7 @@ async function handleBoardScheduledPause(interaction, sharedState) {
 
         const updated = notificationManager.getScheduledWithTemplate(scheduledId);
         await boardManager.updateEmbed(updated);
+        await boardManager.updateControlPanel();
 
         await interaction.followUp({
             content: `⏸️ Scheduled reminder **${scheduledId}** has been paused.`,
@@ -2046,6 +2047,7 @@ async function handleBoardScheduledResume(interaction, sharedState) {
 
         const updated = notificationManager.getScheduledWithTemplate(scheduledId);
         await boardManager.updateEmbed(updated);
+        await boardManager.updateControlPanel();
 
         await interaction.followUp({
             content: `▶️ Scheduled reminder **${scheduledId}** has been resumed.`,
