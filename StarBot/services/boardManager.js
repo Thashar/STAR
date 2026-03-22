@@ -336,7 +336,7 @@ class BoardManager {
                 }
             } catch (error) {
                 // User might have left the server or ID is invalid
-                this.logger.warn(`Failed to fetch member ${scheduled.creator}: ${error.message}`);
+                this.logger.warn(`Failed to fetch member (userId: ${scheduled.creator}): ${error.message}`);
             }
         }
         embed.setFooter({ text: `Created by ${creatorName}` });
