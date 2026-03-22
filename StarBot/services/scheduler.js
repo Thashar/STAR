@@ -35,6 +35,9 @@ class Scheduler {
 
         // Check scheduled reminders
         await this.checkScheduled(now);
+
+        // Check messages to delete (type 1 - standardized, 23h 50min)
+        await this.checkMessagesToDelete();
     }
 
     async checkScheduled(now) {
@@ -109,11 +112,43 @@ class Scheduler {
                 embeds.push(embed);
             }
 
-            await channel.send({ content, embeds });
+            const message = await channel.send({ content, embeds });
 
             this.logger.success(`Notification sent to channel ${scheduled.channelId} (scheduled: ${scheduled.id})`);
+
+            // If type 1 (standardized) - schedule auto-delete after 23h 50min
+            if (scheduled.notificationType === 1) {
+                await this.notificationManager.addMessageToDelete(message.id, scheduled.channelId);
+                this.logger.info(`Message ${message.id} will be auto-deleted in 23h 50min (type: standardized)`);
+            }
         } catch (error) {
             this.logger.error(`Failed to trigger scheduled ${scheduled.id}:`, error);
+        }
+    }
+
+    async checkMessagesToDelete() {
+        const messagesToDelete = this.notificationManager.getMessagesToDeleteNow();
+
+        for (const msg of messagesToDelete) {
+            try {
+                const channel = await this.client.channels.fetch(msg.channelId);
+                if (!channel) {
+                    this.logger.warn(`Channel not found: ${msg.channelId} (message ${msg.messageId})`);
+                    await this.notificationManager.removeMessageFromDeleteList(msg.messageId);
+                    continue;
+                }
+
+                await channel.messages.delete(msg.messageId);
+                this.logger.success(`Deleted message ${msg.messageId} from channel ${msg.channelId} (23h 50min elapsed)`);
+                await this.notificationManager.removeMessageFromDeleteList(msg.messageId);
+            } catch (error) {
+                if (error.code === 10008) { // Unknown Message
+                    this.logger.warn(`Message ${msg.messageId} no longer exists - removing from list`);
+                    await this.notificationManager.removeMessageFromDeleteList(msg.messageId);
+                } else {
+                    this.logger.error(`Failed to delete message ${msg.messageId}:`, error);
+                }
+            }
         }
     }
 }

@@ -23,12 +23,20 @@ class NotificationManager {
         try {
             const fileContent = await fs.readFile(this.dataPath, 'utf8');
             this.data = JSON.parse(fileContent);
+
+            // Migration - add messagesToDelete if not present
+            if (!this.data.messagesToDelete) {
+                this.data.messagesToDelete = [];
+                await this.saveData();
+                this.logger.info('Data migration: added messagesToDelete field');
+            }
         } catch (error) {
             if (error.code === 'ENOENT') {
                 // File doesn't exist, create default structure
                 this.data = {
                     templates: [],
                     scheduled: [],
+                    messagesToDelete: [], // { messageId, channelId, deleteAt (timestamp) }
                     nextId: 1
                 };
                 await this.saveData();
@@ -126,7 +134,7 @@ class NotificationManager {
     // ==================== SCHEDULED REMINDERS ====================
 
     // Create scheduled reminder
-    async createScheduled(creatorId, templateId, firstTrigger, interval, channelId, roles = []) {
+    async createScheduled(creatorId, templateId, firstTrigger, interval, channelId, roles = [], notificationType = 0) {
         const id = this.generateId();
 
         let intervalMs = null;
@@ -135,7 +143,7 @@ class NotificationManager {
         if (interval && interval.trim() !== '') {
             // Validate interval
             if (!this.validateInterval(interval)) {
-                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee". Leave empty for one-time reminder.');
+                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 60d), or "ee". Leave empty for one-time reminder.');
             }
 
             // Parse interval to milliseconds
@@ -143,9 +151,9 @@ class NotificationManager {
 
             // Check max interval (skip for "ee" pattern)
             if (interval !== 'ee') {
-                const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
+                const maxInterval = 60 * 24 * 60 * 60 * 1000; // 60 days in ms
                 if (intervalMs > maxInterval) {
-                    throw new Error('Interval cannot exceed 28 days');
+                    throw new Error('Interval cannot exceed 60 days');
                 }
             }
         } else {
@@ -167,13 +175,14 @@ class NotificationManager {
             status: 'active',
             boardMessageId: null,
             triggerCount: 0, // For "ee" pattern tracking
-            isOneTime: interval === null // Flag for one-time reminder
+            isOneTime: interval === null, // Flag for one-time reminder
+            notificationType: parseInt(notificationType) || 0 // 0 = standard, 1 = standardized (auto-delete after 23h 50min)
         };
 
         this.data.scheduled.push(scheduled);
         await this.saveData();
 
-        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId}, ${interval ? 'recurring' : 'one-time'})`);
+        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: ${templateId}, ${interval ? 'recurring' : 'one-time'}, type: ${notificationType})`);
         return scheduled;
     }
 
@@ -379,6 +388,34 @@ class NotificationManager {
     // Get total count of active scheduled
     getTotalActiveCount() {
         return this.data.scheduled.filter(s => s.status === 'active').length;
+    }
+
+    // ==================== MESSAGES TO DELETE (TYPE 1 - STANDARDIZED) ====================
+
+    // Add message to delete after 23h 50min
+    async addMessageToDelete(messageId, channelId) {
+        const deleteAt = Date.now() + (23 * 60 * 60 * 1000 + 50 * 60 * 1000); // 23h 50min
+
+        this.data.messagesToDelete.push({
+            messageId,
+            channelId,
+            deleteAt
+        });
+
+        await this.saveData();
+        this.logger.info(`Scheduled deletion of message ${messageId} at ${new Date(deleteAt).toLocaleString()}`);
+    }
+
+    // Get messages ready to delete (past their deleteAt timestamp)
+    getMessagesToDeleteNow() {
+        const now = Date.now();
+        return this.data.messagesToDelete.filter(m => m.deleteAt <= now);
+    }
+
+    // Remove message from delete list
+    async removeMessageFromDeleteList(messageId) {
+        this.data.messagesToDelete = this.data.messagesToDelete.filter(m => m.messageId !== messageId);
+        await this.saveData();
     }
 }
 
