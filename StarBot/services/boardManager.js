@@ -204,6 +204,10 @@ class BoardManager {
             this.logger.info(`Deleted board embed for scheduled: ${scheduled.id}`);
             return true;
         } catch (error) {
+            if (error.code === 10008) {
+                // Message already deleted - treat as success
+                return true;
+            }
             this.logger.error(`Failed to delete embed for ${scheduled.id}:`, error);
             return false;
         }
