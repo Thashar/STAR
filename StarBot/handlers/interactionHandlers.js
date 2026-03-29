@@ -1265,6 +1265,7 @@ async function handleModalSubmit(interaction, sharedState) {
             const { boardManager } = sharedState;
             const updated = notificationManager.getScheduledWithTemplate(scheduledId);
             await boardManager.updateEmbed(updated);
+            await boardManager.updateControlPanel();
 
             await interaction.editReply({
                 content: `✅ Scheduled reminder **${scheduledId}** has been updated!`,
