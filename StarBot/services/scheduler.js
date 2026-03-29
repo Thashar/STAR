@@ -8,6 +8,7 @@ class Scheduler {
         this.notificationManager = notificationManager;
         this.boardManager = boardManager;
         this.checkInterval = null;
+        this.isChecking = false;
     }
 
     initialize() {
@@ -31,13 +32,19 @@ class Scheduler {
     }
 
     async checkNotifications() {
-        const now = new Date();
+        if (this.isChecking) return;
+        this.isChecking = true;
+        try {
+            const now = new Date();
 
-        // Check scheduled reminders
-        await this.checkScheduled(now);
+            // Check scheduled reminders
+            await this.checkScheduled(now);
 
-        // Check messages to delete (type 1 - standardized, 23h 50min)
-        await this.checkMessagesToDelete();
+            // Check messages to delete (type 1 - standardized, 23h 50min)
+            await this.checkMessagesToDelete();
+        } finally {
+            this.isChecking = false;
+        }
     }
 
     async checkScheduled(now) {
