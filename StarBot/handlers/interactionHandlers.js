@@ -1226,6 +1226,13 @@ async function handleModalSubmit(interaction, sharedState) {
                 return;
             }
 
+            if (firstTrigger < new Date()) {
+                await interaction.editReply({
+                    content: '❌ Next trigger date cannot be in the past.'
+                });
+                return;
+            }
+
             // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
@@ -2043,11 +2050,11 @@ async function handleEditScheduledEdit(interaction, sharedState) {
         .setCustomId(`edit_scheduled_modal_${scheduledId}`)
         .setTitle('Edit scheduled reminder');
 
-    const formattedDate = formatDateInTimezone(scheduled.firstTrigger, timezoneManager.getGlobalTimezone());
+    const formattedDate = formatDateInTimezone(scheduled.nextTrigger, timezoneManager.getGlobalTimezone());
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
+        .setLabel('Next trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
         .setValue(formattedDate)
         .setRequired(true);
@@ -2360,11 +2367,11 @@ async function handleBoardScheduledEdit(interaction, sharedState) {
         .setCustomId(`edit_scheduled_modal_${scheduledId}`)
         .setTitle('Edit scheduled reminder');
 
-    const formattedDate = formatDateInTimezone(scheduled.firstTrigger, timezoneManager.getGlobalTimezone());
+    const formattedDate = formatDateInTimezone(scheduled.nextTrigger, timezoneManager.getGlobalTimezone());
 
     const firstTriggerInput = new TextInputBuilder()
         .setCustomId('firstTrigger')
-        .setLabel('First trigger (YYYY-MM-DD HH:MM)')
+        .setLabel('Next trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
         .setValue(formattedDate)
         .setRequired(true);
