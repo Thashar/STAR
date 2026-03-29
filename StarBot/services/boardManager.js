@@ -75,28 +75,29 @@ class BoardManager {
 
     // Sync all notifications to board (on startup)
     async syncAllNotifications() {
-        const activeScheduled = this.notificationManager.getActiveScheduled();
-        this.logger.info(`Syncing ${activeScheduled.length} active scheduled reminders to board`);
+        const allScheduled = this.notificationManager.getAllScheduledWithTemplates()
+            .filter(s => s.status === 'active' || s.status === 'paused');
+        this.logger.info(`Syncing ${allScheduled.length} scheduled reminders to board`);
 
-        for (const scheduled of activeScheduled) {
+        for (const scheduled of allScheduled) {
             if (scheduled.boardMessageId) {
                 // Check if message still exists
                 try {
                     await this.boardChannel.messages.fetch(scheduled.boardMessageId);
                     // Message exists, update it
-                    const scheduledWithTemplate = this.notificationManager.getScheduledWithTemplate(scheduled.id);
-                    await this.updateEmbed(scheduledWithTemplate);
+                    await this.updateEmbed(scheduled);
                 } catch (error) {
                     // Message doesn't exist, create new one
-                    const scheduledWithTemplate = this.notificationManager.getScheduledWithTemplate(scheduled.id);
-                    await this.createEmbed(scheduledWithTemplate);
+                    await this.createEmbed(scheduled);
                 }
             } else {
                 // No message ID, create new embed
-                const scheduledWithTemplate = this.notificationManager.getScheduledWithTemplate(scheduled.id);
-                await this.createEmbed(scheduledWithTemplate);
+                await this.createEmbed(scheduled);
             }
         }
+
+        // Refresh control panel with fully synced data
+        await this.updateControlPanel();
     }
 
     // Create embed for scheduled reminder
