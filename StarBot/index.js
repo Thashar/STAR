@@ -36,8 +36,8 @@ const notificationManager = new NotificationManager(config, logger);
 const timezoneManager = new TimezoneManager(logger);
 const eventManager = new EventManager(config, logger);
 const boardManager = new BoardManager(client, config, logger, notificationManager, timezoneManager, eventManager);
-const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager);
 const eventListManager = new EventListManager(client, config, logger, eventManager);
+const scheduler = new Scheduler(client, config, logger, notificationManager, boardManager, eventManager, eventListManager);
 
 // User states for multi-step interactions
 const userStates = new Map();
@@ -76,7 +76,7 @@ async function registerCommands() {
 
 // Event: Bot ready
 client.once('clientReady', async () => {
-    logger.success(`✅ StarBot ready - logged in as ${client.user.tag}`);
+    logger.success(`\u2705 StarBot ready - logged in as ${client.user.tag}`);
     logger.info(`Servers: ${client.guilds.cache.size}`);
     logger.info(`Users: ${client.users.cache.size}`);
 
