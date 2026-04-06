@@ -245,7 +245,12 @@ async function handleEditReminderCommand(interaction, sharedState) {
                 .setCustomId('edit_reminder_scheduled')
                 .setLabel('Scheduled')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('⏰')
+                .setEmoji('⏰'),
+            new ButtonBuilder()
+                .setCustomId('edit_reminder_manual')
+                .setLabel('Manual')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🖐️')
         );
 
     await interaction.reply({
@@ -397,6 +402,17 @@ async function handleButton(interaction, sharedState) {
 
     if (customId === 'edit_reminder_scheduled') {
         await handleEditScheduledButton(interaction, sharedState);
+        return;
+    }
+
+    if (customId === 'edit_reminder_manual') {
+        await handleEditManualButton(interaction, sharedState);
+        return;
+    }
+
+    // Event subscription toggle
+    if (customId === 'event_notifications_subscribe') {
+        await handleEventNotificationsSubscribe(interaction, sharedState);
         return;
     }
 
@@ -720,13 +736,14 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
         .setLabel('First trigger (YYYY-MM-DD HH:MM)')
         .setStyle(TextInputStyle.Short)
         .setValue(currentTime)
-        .setRequired(true);
+        .setPlaceholder('Leave empty if "Manual only" = YES')
+        .setRequired(false);
 
     const intervalInput = new TextInputBuilder()
         .setCustomId('interval')
         .setLabel('Repeat interval (optional)')
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 60d), ee')
+        .setPlaceholder('Empty = one-time, or: 1s, 1m, 1h, 1d (max 90d), ee, msc')
         .setRequired(false)
         .setMaxLength(10);
 
@@ -739,10 +756,19 @@ async function handleTemplateSelectForSet(interaction, sharedState) {
         .setRequired(true)
         .setMaxLength(1);
 
+    const manualInput = new TextInputBuilder()
+        .setCustomId('manual')
+        .setLabel('Manual only? (YES = button-only, no schedule)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Type YES for manual-only, leave empty for scheduled')
+        .setRequired(false)
+        .setMaxLength(3);
+
     modal.addComponents(
         new ActionRowBuilder().addComponents(firstTriggerInput),
         new ActionRowBuilder().addComponents(intervalInput),
-        new ActionRowBuilder().addComponents(typeInput)
+        new ActionRowBuilder().addComponents(typeInput),
+        new ActionRowBuilder().addComponents(manualInput)
     );
 
     await interaction.showModal(modal);
@@ -1029,11 +1055,50 @@ async function handleModalSubmit(interaction, sharedState) {
             const firstTriggerStr = interaction.fields.getTextInputValue('firstTrigger');
             const interval = interaction.fields.getTextInputValue('interval');
             const type = interaction.fields.getTextInputValue('type');
+            const manualStr = (interaction.fields.getTextInputValue('manual') || '').trim().toUpperCase();
+            const isManual = manualStr === 'YES';
 
             // Validate type
             if (type !== '0' && type !== '1') {
                 await interaction.editReply({
                     content: '❌ Invalid type. Use: 0 (standard) or 1 (standardized)'
+                });
+                return;
+            }
+
+            const sessionId = Date.now().toString();
+
+            // MANUAL ONLY: skip firstTrigger and interval validation
+            if (isManual) {
+                // Manual reminders still need a channel - go straight to channel select
+                userStates.set(interaction.user.id, {
+                    sessionId,
+                    templateId,
+                    firstTrigger: null,
+                    interval: null,
+                    notificationType: parseInt(type) || 0,
+                    isManual: true,
+                    step: 'select_channel'
+                });
+
+                const channelSelect = new ChannelSelectMenuBuilder()
+                    .setCustomId(`set_reminder_channel_${sessionId}`)
+                    .setPlaceholder('Select channel for manual notifications')
+                    .setChannelTypes([ChannelType.GuildText]);
+
+                const row = new ActionRowBuilder().addComponents(channelSelect);
+
+                await interaction.editReply({
+                    content: '**Step 2/2:** Select the channel where manual notifications will be sent\n🖐️ This reminder will only send when you press the button in the Manual Panel.',
+                    components: [row]
+                });
+                return;
+            }
+
+            // Require firstTrigger for non-manual reminders
+            if (!firstTriggerStr || firstTriggerStr.trim() === '') {
+                await interaction.editReply({
+                    content: '❌ First trigger date is required for scheduled reminders. Leave it blank only when "Manual only" = YES.'
                 });
                 return;
             }
@@ -1057,24 +1122,22 @@ async function handleModalSubmit(interaction, sharedState) {
             // Validate interval (optional - empty = one-time)
             if (!notificationManager.validateInterval(interval)) {
                 await interaction.editReply({
-                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 60d), "ee", or leave empty for one-time reminder.'
+                    content: '❌ Invalid interval format. Use: 1s, 1m, 1h, 1d (max 90d), "ee", "msc", or leave empty for one-time reminder.'
                 });
                 return;
             }
 
-            // If interval provided, check limit
-            if (interval && interval.trim() !== '') {
+            // If interval provided (not ee/msc), check day limit
+            if (interval && interval.trim() !== '' && interval !== 'ee' && interval !== 'msc') {
                 const intervalMs = notificationManager.parseInterval(interval);
-                const maxInterval = 60 * 24 * 60 * 60 * 1000;
+                const maxInterval = 90 * 24 * 60 * 60 * 1000;
                 if (intervalMs && intervalMs > maxInterval) {
                     await interaction.editReply({
-                        content: '❌ Interval cannot exceed 60 days.'
+                        content: '❌ Interval cannot exceed 90 days.'
                     });
                     return;
                 }
             }
-
-            const sessionId = Date.now().toString();
 
             // TYPE 1 = STANDARDIZED (auto-delete after 23h 50min, channel from events list)
             if (type === '1') {
@@ -1088,7 +1151,6 @@ async function handleModalSubmit(interaction, sharedState) {
                     return;
                 }
 
-                // Store in user state with channel already set
                 userStates.set(interaction.user.id, {
                     sessionId,
                     templateId,
@@ -1096,10 +1158,10 @@ async function handleModalSubmit(interaction, sharedState) {
                     interval,
                     channelId: eventListChannelId,
                     notificationType: 1,
+                    isManual: false,
                     step: 'select_roles'
                 });
 
-                // Show role select directly (no channel selection)
                 const roleSelect = new RoleSelectMenuBuilder()
                     .setCustomId(`set_reminder_roles_${sessionId}`)
                     .setPlaceholder('Select roles to ping (optional)')
@@ -1121,17 +1183,16 @@ async function handleModalSubmit(interaction, sharedState) {
             }
             // TYPE 0 = STANDARD (choose channel + roles)
             else {
-                // Store in user state for channel/role selection
                 userStates.set(interaction.user.id, {
                     sessionId,
                     templateId,
                     firstTrigger: firstTrigger.toISOString(),
                     interval,
                     notificationType: 0,
+                    isManual: false,
                     step: 'select_channel'
                 });
 
-                // Show channel select
                 const channelSelect = new ChannelSelectMenuBuilder()
                     .setCustomId(`set_reminder_channel_${sessionId}`)
                     .setPlaceholder('Select channel for reminders')
@@ -1553,6 +1614,8 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
     const { notificationManager, boardManager, logger, userStates } = sharedState;
 
     try {
+        const isManual = userState.isManual || false;
+
         const scheduled = await notificationManager.createScheduled(
             interaction.user.id,
             userState.templateId,
@@ -1560,40 +1623,44 @@ async function createScheduledFromUserState(interaction, sharedState, userState)
             userState.interval,
             userState.channelId,
             userState.roles || [],
-            userState.notificationType || 0
+            userState.notificationType || 0,
+            isManual
         );
 
-        // Get scheduled with template for board embed
-        const scheduledWithTemplate = notificationManager.getScheduledWithTemplate(scheduled.id);
-        logger.info(`Creating board embed for ${scheduled.id} - has template: ${!!scheduledWithTemplate?.template}`);
-        const embedResult = await boardManager.createEmbed(scheduledWithTemplate);
-        logger.info(`Board embed creation result: ${embedResult ? 'success' : 'failed'}`);
+        // Refresh control panel (and manual panel if needed)
+        await boardManager.ensureControlPanel();
 
         userStates.delete(interaction.user.id);
 
         const template = notificationManager.getTemplate(userState.templateId);
-        const nextTriggerDate = new Date(scheduled.nextTrigger);
-        const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
 
         const notificationTypeText = (userState.notificationType || 0) === 1
             ? '📌 Standardized (auto-delete 23h 50min)'
             : '📋 Standard';
 
-        let content = '✅ **Scheduled reminder created!**\n\n';
+        let content = '✅ **Reminder created!**\n\n';
         content += `⏰ **ID:** ${scheduled.id}\n`;
         content += `📝 **Template:** ${template.name}\n`;
-        content += `📅 **First trigger:** <t:${nextTriggerTimestamp}:F>\n`;
-        content += `🔄 **Interval:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+
+        if (isManual) {
+            content += `🖐️ **Mode:** Manual only (use button in Manual Panel to send)\n`;
+        } else {
+            const nextTriggerDate = new Date(scheduled.nextTrigger);
+            const nextTriggerTimestamp = Math.floor(nextTriggerDate.getTime() / 1000);
+            content += `📅 **First trigger:** <t:${nextTriggerTimestamp}:F>\n`;
+            content += `🔄 **Interval:** ${notificationManager.formatInterval(scheduled.interval)}\n`;
+            content += `🏷️ **Type:** ${notificationTypeText}\n`;
+        }
+
         content += `📍 **Channel:** <#${userState.channelId}>\n`;
-        content += `👥 **Roles:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'None'}\n`;
-        content += `🏷️ **Type:** ${notificationTypeText}`;
+        content += `👥 **Roles:** ${userState.roles && userState.roles.length > 0 ? userState.roles.map(r => `<@&${r}>`).join(', ') : 'None'}`;
 
         await interaction.editReply({
             content,
             components: []
         });
 
-        logger.success(`Created scheduled reminder ${scheduled.id}`);
+        logger.success(`Created ${isManual ? 'manual' : 'scheduled'} reminder ${scheduled.id}`);
     } catch (error) {
         logger.error('Error creating scheduled reminder:', error);
         await interaction.editReply({
@@ -1897,6 +1964,85 @@ async function handleEditScheduledButton(interaction, sharedState) {
         components: rows
     });
 }
+
+// ==================== MANUAL REMINDER HANDLERS ====================
+
+async function handleEditManualButton(interaction, sharedState) {
+    const { notificationManager } = sharedState;
+
+    const allScheduled = notificationManager.getAllScheduled();
+    const manual = allScheduled.filter(s => s.isManual || s.status === 'manual');
+
+    if (manual.length === 0) {
+        await interaction.update({
+            content: '❌ No manual reminders found. Create one via "Set Reminder" and select "Manual only = YES".',
+            components: []
+        });
+        return;
+    }
+
+    const ITEMS_PER_PAGE = 25;
+    const page = 0;
+    const pageItems = manual.slice(0, ITEMS_PER_PAGE);
+
+    const options = pageItems.map(s => {
+        const template = notificationManager.getTemplate(s.templateId);
+        const templateName = template ? template.name : 'Unknown';
+        return {
+            label: `🖐️ ${templateName}`.substring(0, 100),
+            description: `ID: ${s.id} - Channel: ${s.channelId}`.substring(0, 100),
+            value: s.id
+        };
+    });
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`scheduled_select_edit_${page}`)
+        .setPlaceholder(`Select manual reminder (${manual.length} total)`)
+        .addOptions(options);
+
+    await interaction.update({
+        content: `**Select manual reminder** (${manual.length} total)`,
+        components: [new ActionRowBuilder().addComponents(selectMenu)]
+    });
+}
+
+// ==================== EVENT SUBSCRIPTION HANDLER ====================
+
+async function handleEventNotificationsSubscribe(interaction, sharedState) {
+    const { logger } = sharedState;
+    const EVENT_SUBSCRIPTION_ROLE_ID = '1325137220960784464';
+
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        const { user, guild } = interaction;
+        const member = await guild.members.fetch(user.id);
+        const hasRole = member.roles.cache.has(EVENT_SUBSCRIPTION_ROLE_ID);
+
+        if (hasRole) {
+            await member.roles.remove(EVENT_SUBSCRIPTION_ROLE_ID);
+            logger.success(`Removed event notification role from ${user.tag}`);
+            await interaction.editReply({
+                content: '🔕 Event notification role removed. You will no longer receive event notifications.'
+            });
+        } else {
+            await member.roles.add(EVENT_SUBSCRIPTION_ROLE_ID);
+            logger.success(`Added event notification role to ${user.tag}`);
+            await interaction.editReply({
+                content: '🔔 Event notification role added! You will now receive notifications about upcoming events.'
+            });
+        }
+    } catch (error) {
+        logger.error('Error handling event subscription:', error);
+        try {
+            await interaction.editReply({ content: '❌ Failed to update your role. Check bot permissions.' });
+        } catch (e) {
+            // Ignore
+        }
+    }
+}
+
+// ==================== TEMPLATE/SCHEDULED PAGINATION ====================
 
 async function handleTemplatePagination(interaction, sharedState) {
     const { notificationManager } = sharedState;
