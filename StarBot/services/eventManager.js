@@ -1,6 +1,49 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+// ==================== TIMEZONE HELPERS (Warsaw-aware for msc interval) ====================
+
+const WARSAW_TZ = 'Europe/Warsaw';
+
+function getWarsawComponents(dateUTC) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: WARSAW_TZ,
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+        hour12: false
+    }).formatToParts(dateUTC);
+    const get = type => parseInt(parts.find(p => p.type === type).value);
+    return {
+        year: get('year'),
+        month: get('month'),
+        day: get('day'),
+        hours: get('hour') % 24,
+        minutes: get('minute'),
+        seconds: get('second')
+    };
+}
+
+function warsawComponentsToUTC(year, month1, day, hours, minutes, seconds = 0) {
+    const refDate = new Date(Date.UTC(year, month1 - 1, day, 0, 0, 0));
+    const tzParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: WARSAW_TZ, hour: '2-digit', hour12: false
+    }).formatToParts(refDate);
+    const warsawHourAtMidnight = parseInt(tzParts.find(p => p.type === 'hour').value) % 24;
+    const offsetMs = warsawHourAtMidnight * 60 * 60 * 1000;
+    return new Date(Date.UTC(year, month1 - 1, day, hours, minutes, seconds) - offsetMs);
+}
+
+function addOneMonthWarsaw(dateUTC, originalDay) {
+    const { year, month, hours, minutes, seconds } = getWarsawComponents(dateUTC);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+    const actualDay = Math.min(originalDay, daysInNextMonth);
+    return warsawComponentsToUTC(nextYear, nextMonth, actualDay, hours, minutes, seconds);
+}
+
+// ==================== EVENT MANAGER ====================
+
 class EventManager {
     constructor(config, logger) {
         this.config = config;
@@ -23,14 +66,21 @@ class EventManager {
         try {
             const fileContent = await fs.readFile(this.dataPath, 'utf8');
             this.data = JSON.parse(fileContent);
+
+            // Migration: add manualPanelMessageId if not present
+            if (this.data.manualPanelMessageId === undefined) {
+                this.data.manualPanelMessageId = null;
+                await this.saveData();
+                this.logger.info('Data migration: added manualPanelMessageId field');
+            }
         } catch (error) {
             if (error.code === 'ENOENT') {
-                // File doesn't exist, create default structure
                 this.data = {
                     events: [],
                     listChannelId: null,
                     listMessageId: null,
                     controlPanelMessageId: null,
+                    manualPanelMessageId: null,
                     nextId: 1
                 };
                 await this.saveData();
@@ -61,31 +111,30 @@ class EventManager {
 
     // ==================== EVENTS ====================
 
-    // Create event
     async createEvent(creatorId, name, firstTrigger, interval) {
         const id = this.generateId();
 
         let intervalMs = null;
+        let monthlyDay = null;
 
-        // If interval provided, validate it
         if (interval && interval.trim() !== '') {
-            // Validate interval
             if (!this.validateInterval(interval)) {
-                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 28d), or "ee". Leave empty for one-time event.');
+                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 90d), "ee", "msc". Leave empty for one-time event.');
             }
 
-            // Parse interval to milliseconds
             intervalMs = this.parseInterval(interval);
 
-            // Check max interval (skip for "ee" pattern)
-            if (interval !== 'ee') {
-                const maxInterval = 28 * 24 * 60 * 60 * 1000; // 28 days in ms
-                if (intervalMs > maxInterval) {
-                    throw new Error('Interval cannot exceed 28 days');
+            if (interval !== 'ee' && interval !== 'msc') {
+                const maxInterval = 90 * 24 * 60 * 60 * 1000;
+                if (intervalMs && intervalMs > maxInterval) {
+                    throw new Error('Interval cannot exceed 90 days');
                 }
             }
+
+            if (interval === 'msc') {
+                monthlyDay = getWarsawComponents(new Date(firstTrigger)).day;
+            }
         } else {
-            // No interval - one-time event
             interval = null;
         }
 
@@ -95,11 +144,12 @@ class EventManager {
             creator: creatorId,
             createdAt: new Date().toISOString(),
             firstTrigger: new Date(firstTrigger).toISOString(),
-            interval, // null for one-time
-            intervalMs, // null for one-time
+            interval,
+            intervalMs,
+            monthlyDay,
             nextTrigger: new Date(firstTrigger).toISOString(),
-            triggerCount: 0, // For "ee" pattern tracking
-            isOneTime: interval === null // Flag for one-time event
+            triggerCount: 0,
+            isOneTime: interval === null
         };
 
         this.data.events.push(event);
@@ -109,20 +159,16 @@ class EventManager {
         return event;
     }
 
-    // Validate interval format
-    // Returns true if interval is empty (one-time) or valid
     validateInterval(interval) {
-        // Empty interval = one-time event
         if (!interval || interval.trim() === '') {
             return true;
         }
-        return /^\d+[smhd]$/.test(interval) || interval === 'ee';
+        return /^\d+[smhd]$/.test(interval) || interval === 'ee' || interval === 'msc';
     }
 
-    // Parse interval to milliseconds
     parseInterval(interval) {
-        if (interval === 'ee') {
-            return null; // Dynamic, calculated per trigger
+        if (interval === 'ee' || interval === 'msc') {
+            return null;
         }
 
         const match = interval.match(/^(\d+)([smhd])$/);
@@ -142,13 +188,13 @@ class EventManager {
         }
     }
 
-    // Format interval for display
     formatInterval(interval) {
-        // One-time event
         if (!interval || interval === null) {
             return 'One-time';
         }
-
+        if (interval === 'msc') {
+            return 'Monthly (same day)';
+        }
         if (interval === 'ee') {
             return 'EE Pattern (3d x8, then 4d, repeat)';
         }
@@ -169,24 +215,18 @@ class EventManager {
         return `${value} ${units[unit]}`;
     }
 
-    // Get event by ID
     getEvent(id) {
         return this.data.events.find(e => e.id === id);
     }
 
-    // Get all events
     getAllEvents() {
         return this.data.events;
     }
 
-    // Update event
     async updateEvent(id, updates) {
         const index = this.data.events.findIndex(e => e.id === id);
         if (index !== -1) {
-            this.data.events[index] = {
-                ...this.data.events[index],
-                ...updates
-            };
+            this.data.events[index] = { ...this.data.events[index], ...updates };
             await this.saveData();
             this.logger.info(`Updated event: ${id}`);
             return true;
@@ -194,7 +234,6 @@ class EventManager {
         return false;
     }
 
-    // Delete event
     async deleteEvent(id) {
         const initialLength = this.data.events.length;
         this.data.events = this.data.events.filter(e => e.id !== id);
@@ -207,76 +246,76 @@ class EventManager {
         return false;
     }
 
-    // Update next trigger for event
     async updateNextTrigger(id) {
         const event = this.getEvent(id);
         if (!event) return false;
 
-        // If this is a one-time event, delete it
         if (!event.interval || event.interval === null || event.isOneTime) {
             this.logger.info(`One-time event ${id} executed - removing from list`);
             return await this.deleteEvent(id);
         }
 
         const lastTrigger = new Date(event.nextTrigger);
-        let nextIntervalMs;
-        let newTriggerCount = (event.triggerCount || 0) + 1;
+        let nextTrigger;
+        const newTriggerCount = (event.triggerCount || 0) + 1;
 
-        // Special "ee" pattern: 3d x8, then 4d, repeat
-        if (event.interval === 'ee') {
-            const cyclePosition = (event.triggerCount || 0) % 9;
-            if (cyclePosition === 8) {
-                nextIntervalMs = 4 * 24 * 60 * 60 * 1000; // 4 days
-            } else {
-                nextIntervalMs = 3 * 24 * 60 * 60 * 1000; // 3 days
-            }
+        if (event.interval === 'msc') {
+            const originalDay = event.monthlyDay || getWarsawComponents(lastTrigger).day;
+            nextTrigger = addOneMonthWarsaw(lastTrigger, originalDay).toISOString();
         } else {
-            nextIntervalMs = event.intervalMs;
+            let nextIntervalMs;
+            if (event.interval === 'ee') {
+                const cyclePosition = (event.triggerCount || 0) % 9;
+                nextIntervalMs = cyclePosition === 8
+                    ? 4 * 24 * 60 * 60 * 1000
+                    : 3 * 24 * 60 * 60 * 1000;
+            } else {
+                nextIntervalMs = event.intervalMs;
+            }
+            nextTrigger = new Date(lastTrigger.getTime() + nextIntervalMs).toISOString();
         }
 
-        const nextTrigger = new Date(lastTrigger.getTime() + nextIntervalMs).toISOString();
-
-        return await this.updateEvent(id, {
-            nextTrigger,
-            triggerCount: newTriggerCount
-        });
+        return await this.updateEvent(id, { nextTrigger, triggerCount: newTriggerCount });
     }
 
     // ==================== LIST CHANNEL ====================
 
-    // Set list channel
     async setListChannel(channelId) {
         this.data.listChannelId = channelId;
-        this.data.listMessageId = null; // Reset message ID
+        this.data.listMessageId = null;
         await this.saveData();
         this.logger.info(`Set events list channel: ${channelId}`);
     }
 
-    // Get list channel ID
     getListChannelId() {
         return this.data.listChannelId;
     }
 
-    // Set list message ID
     async setListMessageId(messageId) {
         this.data.listMessageId = messageId;
         await this.saveData();
     }
 
-    // Get list message ID
     getListMessageId() {
         return this.data.listMessageId;
     }
 
-    // Set control panel message ID
     async setControlPanelMessageId(messageId) {
         this.data.controlPanelMessageId = messageId;
         await this.saveData();
     }
 
-    // Get control panel message ID
     getControlPanelMessageId() {
         return this.data.controlPanelMessageId;
+    }
+
+    async setManualPanelMessageId(messageId) {
+        this.data.manualPanelMessageId = messageId;
+        await this.saveData();
+    }
+
+    getManualPanelMessageId() {
+        return this.data.manualPanelMessageId;
     }
 }
 

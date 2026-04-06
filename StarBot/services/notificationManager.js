@@ -1,6 +1,49 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+// ==================== TIMEZONE HELPERS (Warsaw-aware for msc interval) ====================
+
+const WARSAW_TZ = 'Europe/Warsaw';
+
+function getWarsawComponents(dateUTC) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: WARSAW_TZ,
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+        hour12: false
+    }).formatToParts(dateUTC);
+    const get = type => parseInt(parts.find(p => p.type === type).value);
+    return {
+        year: get('year'),
+        month: get('month'),
+        day: get('day'),
+        hours: get('hour') % 24,
+        minutes: get('minute'),
+        seconds: get('second')
+    };
+}
+
+function warsawComponentsToUTC(year, month1, day, hours, minutes, seconds = 0) {
+    const refDate = new Date(Date.UTC(year, month1 - 1, day, 0, 0, 0));
+    const tzParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: WARSAW_TZ, hour: '2-digit', hour12: false
+    }).formatToParts(refDate);
+    const warsawHourAtMidnight = parseInt(tzParts.find(p => p.type === 'hour').value) % 24;
+    const offsetMs = warsawHourAtMidnight * 60 * 60 * 1000;
+    return new Date(Date.UTC(year, month1 - 1, day, hours, minutes, seconds) - offsetMs);
+}
+
+function addOneMonthWarsaw(dateUTC, originalDay) {
+    const { year, month, hours, minutes, seconds } = getWarsawComponents(dateUTC);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+    const actualDay = Math.min(originalDay, daysInNextMonth);
+    return warsawComponentsToUTC(nextYear, nextMonth, actualDay, hours, minutes, seconds);
+}
+
+// ==================== NOTIFICATION MANAGER ====================
+
 class NotificationManager {
     constructor(config, logger) {
         this.config = config;
@@ -24,7 +67,6 @@ class NotificationManager {
             const fileContent = await fs.readFile(this.dataPath, 'utf8');
             this.data = JSON.parse(fileContent);
 
-            // Migration - add messagesToDelete if not present
             if (!this.data.messagesToDelete) {
                 this.data.messagesToDelete = [];
                 await this.saveData();
@@ -32,11 +74,10 @@ class NotificationManager {
             }
         } catch (error) {
             if (error.code === 'ENOENT') {
-                // File doesn't exist, create default structure
                 this.data = {
                     templates: [],
                     scheduled: [],
-                    messagesToDelete: [], // { messageId, channelId, deleteAt (timestamp) }
+                    messagesToDelete: [],
                     nextId: 1
                 };
                 await this.saveData();
@@ -67,16 +108,15 @@ class NotificationManager {
 
     // ==================== TEMPLATES ====================
 
-    // Create template (Text or Embed)
     async createTemplate(creatorId, name, type, content) {
         const id = this.generateId();
         const template = {
             id: `tpl_${id}`,
             name,
-            type, // 'text' or 'embed'
+            type,
             creator: creatorId,
             createdAt: new Date().toISOString(),
-            ...content // { text } for text, { embedTitle, embedDescription, embedIcon, embedImage } for embed
+            ...content
         };
 
         this.data.templates.push(template);
@@ -86,29 +126,22 @@ class NotificationManager {
         return template;
     }
 
-    // Get template by ID
     getTemplate(id) {
         return this.data.templates.find(t => t.id === id);
     }
 
-    // Get all templates
     getAllTemplates() {
         return this.data.templates;
     }
 
-    // Get templates by creator
     getTemplatesByCreator(creatorId) {
         return this.data.templates.filter(t => t.creator === creatorId);
     }
 
-    // Update template
     async updateTemplate(id, updates) {
         const index = this.data.templates.findIndex(t => t.id === id);
         if (index !== -1) {
-            this.data.templates[index] = {
-                ...this.data.templates[index],
-                ...updates
-            };
+            this.data.templates[index] = { ...this.data.templates[index], ...updates };
             await this.saveData();
             this.logger.info(`Updated template: ${id}`);
             return true;
@@ -116,13 +149,11 @@ class NotificationManager {
         return false;
     }
 
-    // Delete template
     async deleteTemplate(id) {
         const initialLength = this.data.templates.length;
         this.data.templates = this.data.templates.filter(t => t.id !== id);
 
         if (this.data.templates.length < initialLength) {
-            // Also delete all scheduled reminders using this template
             this.data.scheduled = this.data.scheduled.filter(s => s.templateId !== id);
             await this.saveData();
             this.logger.info(`Deleted template: ${id} and all associated scheduled reminders`);
@@ -133,31 +164,34 @@ class NotificationManager {
 
     // ==================== SCHEDULED REMINDERS ====================
 
-    // Create scheduled reminder
-    async createScheduled(creatorId, templateId, firstTrigger, interval, channelId, roles = [], notificationType = 0) {
+    async createScheduled(creatorId, templateId, firstTrigger, interval, channelId, roles = [], notificationType = 0, isManual = false) {
         const id = this.generateId();
 
         let intervalMs = null;
+        let monthlyDay = null;
 
-        // If interval provided, validate it
-        if (interval && interval.trim() !== '') {
-            // Validate interval
+        if (isManual) {
+            // Manual reminders have no schedule - only sent via button
+            interval = null;
+            firstTrigger = null;
+        } else if (interval && interval.trim() !== '') {
             if (!this.validateInterval(interval)) {
-                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 60d), or "ee". Leave empty for one-time reminder.');
+                throw new Error('Invalid interval format. Use: 1s, 1m, 1h, 1d (max 90d), "ee", "msc". Leave empty for one-time reminder.');
             }
 
-            // Parse interval to milliseconds
             intervalMs = this.parseInterval(interval);
 
-            // Check max interval (skip for "ee" pattern)
-            if (interval !== 'ee') {
-                const maxInterval = 60 * 24 * 60 * 60 * 1000; // 60 days in ms
-                if (intervalMs > maxInterval) {
-                    throw new Error('Interval cannot exceed 60 days');
+            if (interval !== 'ee' && interval !== 'msc') {
+                const maxInterval = 90 * 24 * 60 * 60 * 1000;
+                if (intervalMs && intervalMs > maxInterval) {
+                    throw new Error('Interval cannot exceed 90 days');
                 }
             }
+
+            if (interval === 'msc' && firstTrigger) {
+                monthlyDay = getWarsawComponents(new Date(firstTrigger)).day;
+            }
         } else {
-            // No interval - one-time reminder
             interval = null;
         }
 
@@ -166,42 +200,41 @@ class NotificationManager {
             templateId,
             creator: creatorId,
             createdAt: new Date().toISOString(),
-            firstTrigger: new Date(firstTrigger).toISOString(),
-            interval, // null for one-time
-            intervalMs, // null for one-time
-            nextTrigger: new Date(firstTrigger).toISOString(),
+            firstTrigger: firstTrigger ? new Date(firstTrigger).toISOString() : null,
+            interval,
+            intervalMs,
+            monthlyDay,
+            nextTrigger: firstTrigger ? new Date(firstTrigger).toISOString() : null,
             channelId,
             roles,
-            status: 'active',
+            status: isManual ? 'manual' : 'active',
             boardMessageId: null,
-            triggerCount: 0, // For "ee" pattern tracking
-            isOneTime: interval === null, // Flag for one-time reminder
-            notificationType: parseInt(notificationType) || 0 // 0 = standard, 1 = standardized (auto-delete after 23h 50min)
+            triggerCount: 0,
+            isOneTime: !isManual && interval === null,
+            isManual,
+            notificationType: parseInt(notificationType) || 0
         };
 
         this.data.scheduled.push(scheduled);
         await this.saveData();
 
         const tpl = this.getTemplate(templateId);
-        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: "${tpl?.name || templateId}", ${interval ? 'interval: ' + interval : 'one-time'}, type: ${notificationType === 1 ? 'standardized' : 'standard'})`);
+        this.logger.info(`Created scheduled reminder: ${scheduled.id} (template: "${tpl?.name || templateId}", ${isManual ? 'manual' : interval ? 'interval: ' + interval : 'one-time'}, type: ${notificationType === 1 ? 'standardized' : 'standard'})`);
         return scheduled;
     }
 
-    // Validate interval format (1s, 1m, 1h, 1d, or "ee" for special pattern)
-    // Returns true if interval is empty (one-time) or valid
+    // Validate interval format
     validateInterval(interval) {
-        // Empty interval = one-time reminder
         if (!interval || interval.trim() === '') {
             return true;
         }
-        return /^\d+[smhd]$/.test(interval) || interval === 'ee';
+        return /^\d+[smhd]$/.test(interval) || interval === 'ee' || interval === 'msc';
     }
 
     // Parse interval to milliseconds
     parseInterval(interval) {
-        // Special "ee" pattern - dynamic interval (3d x8, then 4d, repeat)
-        if (interval === 'ee') {
-            return null; // Dynamic, calculated per trigger
+        if (interval === 'ee' || interval === 'msc') {
+            return null; // Dynamic / calendar-based
         }
 
         const match = interval.match(/^(\d+)([smhd])$/);
@@ -223,12 +256,12 @@ class NotificationManager {
 
     // Format interval for display
     formatInterval(interval) {
-        // One-time reminder
         if (!interval || interval === null) {
             return 'One-time';
         }
-
-        // Special "ee" pattern
+        if (interval === 'msc') {
+            return 'Monthly (same day)';
+        }
         if (interval === 'ee') {
             return 'EE Pattern (3d x8, then 4d, repeat)';
         }
@@ -249,39 +282,30 @@ class NotificationManager {
         return `${value} ${units[unit]}`;
     }
 
-    // Get scheduled reminder by ID
     getScheduled(id) {
         return this.data.scheduled.find(s => s.id === id);
     }
 
-    // Get all scheduled reminders
     getAllScheduled() {
         return this.data.scheduled;
     }
 
-    // Get active scheduled reminders
     getActiveScheduled() {
         return this.data.scheduled.filter(s => s.status === 'active');
     }
 
-    // Get scheduled reminders by creator
     getScheduledByCreator(creatorId) {
         return this.data.scheduled.filter(s => s.creator === creatorId);
     }
 
-    // Get scheduled reminders by template
     getScheduledByTemplate(templateId) {
         return this.data.scheduled.filter(s => s.templateId === templateId);
     }
 
-    // Update scheduled reminder
     async updateScheduled(id, updates) {
         const index = this.data.scheduled.findIndex(s => s.id === id);
         if (index !== -1) {
-            this.data.scheduled[index] = {
-                ...this.data.scheduled[index],
-                ...updates
-            };
+            this.data.scheduled[index] = { ...this.data.scheduled[index], ...updates };
             await this.saveData();
             this.logger.info(`Updated scheduled reminder: ${id}`);
             return true;
@@ -289,7 +313,6 @@ class NotificationManager {
         return false;
     }
 
-    // Delete scheduled reminder
     async deleteScheduled(id) {
         const initialLength = this.data.scheduled.length;
         this.data.scheduled = this.data.scheduled.filter(s => s.id !== id);
@@ -302,62 +325,50 @@ class NotificationManager {
         return false;
     }
 
-    // Pause scheduled reminder
     async pauseScheduled(id) {
         return await this.updateScheduled(id, { status: 'paused' });
     }
 
-    // Resume scheduled reminder
     async resumeScheduled(id) {
         return await this.updateScheduled(id, { status: 'active' });
     }
 
-    // Update next trigger for scheduled reminder
     async updateNextTrigger(id) {
         const scheduled = this.getScheduled(id);
         if (!scheduled) return false;
 
-        // If this is a one-time reminder, mark as completed
         if (!scheduled.interval || scheduled.interval === null || scheduled.isOneTime) {
             this.logger.info(`One-time reminder ${id} executed - marking as completed`);
-            return await this.updateScheduled(id, {
-                status: 'completed',
-                triggerCount: 1
-            });
+            return await this.updateScheduled(id, { status: 'completed', triggerCount: 1 });
         }
 
         const lastTrigger = new Date(scheduled.nextTrigger);
-        let nextIntervalMs;
-        let newTriggerCount = (scheduled.triggerCount || 0) + 1;
+        let nextTrigger;
+        const newTriggerCount = (scheduled.triggerCount || 0) + 1;
 
-        // Special "ee" pattern: 3d x8, then 4d, repeat
-        if (scheduled.interval === 'ee') {
-            const cyclePosition = (scheduled.triggerCount || 0) % 9;
-            // Positions 0-7 (first 8 triggers): 3 days
-            // Position 8 (9th trigger): 4 days
-            if (cyclePosition === 8) {
-                nextIntervalMs = 4 * 24 * 60 * 60 * 1000; // 4 days
-            } else {
-                nextIntervalMs = 3 * 24 * 60 * 60 * 1000; // 3 days
-            }
+        if (scheduled.interval === 'msc') {
+            const originalDay = scheduled.monthlyDay || getWarsawComponents(lastTrigger).day;
+            nextTrigger = addOneMonthWarsaw(lastTrigger, originalDay).toISOString();
         } else {
-            nextIntervalMs = scheduled.intervalMs;
+            let nextIntervalMs;
+            if (scheduled.interval === 'ee') {
+                const cyclePosition = (scheduled.triggerCount || 0) % 9;
+                nextIntervalMs = cyclePosition === 8
+                    ? 4 * 24 * 60 * 60 * 1000
+                    : 3 * 24 * 60 * 60 * 1000;
+            } else {
+                nextIntervalMs = scheduled.intervalMs;
+            }
+            nextTrigger = new Date(lastTrigger.getTime() + nextIntervalMs).toISOString();
         }
 
-        const nextTrigger = new Date(lastTrigger.getTime() + nextIntervalMs).toISOString();
-
-        return await this.updateScheduled(id, {
-            nextTrigger,
-            triggerCount: newTriggerCount
-        });
+        return await this.updateScheduled(id, { nextTrigger, triggerCount: newTriggerCount });
     }
 
-    // Update board message ID
     async updateBoardMessageId(id, messageId) {
         return await this.updateScheduled(id, { boardMessageId: messageId });
     }
 
-    // Get scheduled reminder with template data
     getScheduledWithTemplate(id) {
         const scheduled = this.getScheduled(id);
         if (!scheduled) return null;
@@ -365,13 +376,9 @@ class NotificationManager {
         const template = this.getTemplate(scheduled.templateId);
         if (!template) return null;
 
-        return {
-            ...scheduled,
-            template
-        };
+        return { ...scheduled, template };
     }
 
-    // Get all scheduled with templates
     getAllScheduledWithTemplates() {
         return this.data.scheduled.map(s => ({
             ...s,
@@ -379,41 +386,31 @@ class NotificationManager {
         })).filter(s => s.template !== undefined);
     }
 
-    // Get count of active scheduled per user
     getActiveCountByUser(userId) {
         return this.data.scheduled.filter(
             s => s.creator === userId && s.status === 'active'
         ).length;
     }
 
-    // Get total count of active scheduled
     getTotalActiveCount() {
         return this.data.scheduled.filter(s => s.status === 'active').length;
     }
 
     // ==================== MESSAGES TO DELETE (TYPE 1 - STANDARDIZED) ====================
 
-    // Add message to delete after 23h 50min
     async addMessageToDelete(messageId, channelId) {
-        const deleteAt = Date.now() + (23 * 60 * 60 * 1000 + 50 * 60 * 1000); // 23h 50min
+        const deleteAt = Date.now() + (23 * 60 * 60 * 1000 + 50 * 60 * 1000);
 
-        this.data.messagesToDelete.push({
-            messageId,
-            channelId,
-            deleteAt
-        });
-
+        this.data.messagesToDelete.push({ messageId, channelId, deleteAt });
         await this.saveData();
         this.logger.info(`Scheduled deletion of message ${messageId} at ${new Date(deleteAt).toLocaleString()}`);
     }
 
-    // Get messages ready to delete (past their deleteAt timestamp)
     getMessagesToDeleteNow() {
         const now = Date.now();
         return this.data.messagesToDelete.filter(m => m.deleteAt <= now);
     }
 
-    // Remove message from delete list
     async removeMessageFromDeleteList(messageId) {
         this.data.messagesToDelete = this.data.messagesToDelete.filter(m => m.messageId !== messageId);
         await this.saveData();
