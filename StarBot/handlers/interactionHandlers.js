@@ -410,6 +410,16 @@ async function handleButton(interaction, sharedState) {
         return;
     }
 
+    if (customId.startsWith('edit_scheduled_pause_')) {
+        await handleEditScheduledPause(interaction, sharedState);
+        return;
+    }
+
+    if (customId.startsWith('edit_scheduled_resume_')) {
+        await handleEditScheduledResume(interaction, sharedState);
+        return;
+    }
+
     // Event subscription toggle
     if (customId === 'event_notifications_subscribe') {
         await handleEventNotificationsSubscribe(interaction, sharedState);
@@ -1594,8 +1604,20 @@ async function showScheduledEditPreview(interaction, scheduled, sharedState) {
                 .setEmoji('👥')
         );
 
+    const isPaused = scheduled.status === 'paused';
     const row2 = new ActionRowBuilder()
         .addComponents(
+            isPaused
+                ? new ButtonBuilder()
+                    .setCustomId(`edit_scheduled_resume_${scheduled.id}`)
+                    .setLabel('Resume')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('▶️')
+                : new ButtonBuilder()
+                    .setCustomId(`edit_scheduled_pause_${scheduled.id}`)
+                    .setLabel('Pause')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('⏸️'),
             new ButtonBuilder()
                 .setCustomId(`edit_scheduled_delete_${scheduled.id}`)
                 .setLabel('Delete')
@@ -1963,6 +1985,38 @@ async function handleEditScheduledButton(interaction, sharedState) {
         content: `**Select zaplanowane przypomnienie** (${scheduled.length} total)`,
         components: rows
     });
+}
+
+// ==================== PAUSE / RESUME FROM EDIT PREVIEW ====================
+
+async function handleEditScheduledPause(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+    const scheduledId = interaction.customId.replace('edit_scheduled_pause_', '');
+    try {
+        await notificationManager.pauseScheduled(scheduledId);
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateControlPanel();
+        await showScheduledEditPreview(interaction, updated, sharedState);
+        logger.success(`Paused scheduled ${scheduledId}`);
+    } catch (error) {
+        logger.error('Error pausing scheduled:', error);
+        await interaction.update({ content: '❌ Error pausing reminder.', components: [] });
+    }
+}
+
+async function handleEditScheduledResume(interaction, sharedState) {
+    const { notificationManager, boardManager, logger } = sharedState;
+    const scheduledId = interaction.customId.replace('edit_scheduled_resume_', '');
+    try {
+        await notificationManager.resumeScheduled(scheduledId);
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        await boardManager.updateControlPanel();
+        await showScheduledEditPreview(interaction, updated, sharedState);
+        logger.success(`Resumed scheduled ${scheduledId}`);
+    } catch (error) {
+        logger.error('Error resuming scheduled:', error);
+        await interaction.update({ content: '❌ Error resuming reminder.', components: [] });
+    }
 }
 
 // ==================== MANUAL REMINDER HANDLERS ====================
