@@ -2008,9 +2008,13 @@ async function handleEditScheduledResume(interaction, sharedState) {
     const { notificationManager, boardManager, logger } = sharedState;
     const scheduledId = interaction.customId.replace('edit_scheduled_resume_', '');
     try {
-        await notificationManager.resumeScheduled(scheduledId);
-        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
+        const resumeResult = await notificationManager.resumeScheduled(scheduledId);
         await boardManager.updateControlPanel();
+        if (resumeResult && resumeResult.deleted) {
+            await interaction.update({ content: '⏰ This one-time reminder expired while paused and has been deleted.', components: [] });
+            return;
+        }
+        const updated = notificationManager.getScheduledWithTemplate(scheduledId);
         await showScheduledEditPreview(interaction, updated, sharedState);
         logger.success(`Resumed scheduled ${scheduledId}`);
     } catch (error) {
@@ -2529,7 +2533,16 @@ async function handleBoardScheduledResume(interaction, sharedState) {
     const scheduledId = interaction.customId.replace('scheduled_resume_', '');
 
     try {
-        await notificationManager.resumeScheduled(scheduledId);
+        const resumeResult = await notificationManager.resumeScheduled(scheduledId);
+
+        if (resumeResult && resumeResult.deleted) {
+            await boardManager.updateControlPanel();
+            await interaction.followUp({
+                content: '⏰ This one-time reminder expired while paused and has been deleted.',
+                ephemeral: true
+            });
+            return;
+        }
 
         const updated = notificationManager.getScheduledWithTemplate(scheduledId);
         await boardManager.updateEmbed(updated);

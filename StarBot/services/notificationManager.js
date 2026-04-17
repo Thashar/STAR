@@ -171,7 +171,6 @@ class NotificationManager {
         let monthlyDay = null;
 
         if (isManual) {
-            // Manual reminders have no schedule - only sent via button
             interval = null;
             firstTrigger = null;
         } else if (interval && interval.trim() !== '') {
@@ -223,7 +222,6 @@ class NotificationManager {
         return scheduled;
     }
 
-    // Validate interval format
     validateInterval(interval) {
         if (!interval || interval.trim() === '') {
             return true;
@@ -231,10 +229,9 @@ class NotificationManager {
         return /^\d+[smhd]$/.test(interval) || interval === 'ee' || interval === 'msc';
     }
 
-    // Parse interval to milliseconds
     parseInterval(interval) {
         if (interval === 'ee' || interval === 'msc') {
-            return null; // Dynamic / calendar-based
+            return null;
         }
 
         const match = interval.match(/^(\d+)([smhd])$/);
@@ -254,7 +251,6 @@ class NotificationManager {
         }
     }
 
-    // Format interval for display
     formatInterval(interval) {
         if (!interval || interval === null) {
             return 'One-time';
@@ -330,7 +326,49 @@ class NotificationManager {
     }
 
     async resumeScheduled(id) {
-        return await this.updateScheduled(id, { status: 'active' });
+        const scheduled = this.getScheduled(id);
+        if (!scheduled) return false;
+
+        const now = new Date();
+        const nextTrigger = new Date(scheduled.nextTrigger);
+
+        if (nextTrigger > now) {
+            return await this.updateScheduled(id, { status: 'active' });
+        }
+
+        // nextTrigger passed while paused
+        if (scheduled.isOneTime || !scheduled.interval) {
+            await this.deleteScheduled(id);
+            await this.deleteTemplate(scheduled.templateId);
+            this.logger.info(`One-time reminder ${id} expired while paused - deleted`);
+            return { deleted: true };
+        }
+
+        // Recurring: advance nextTrigger to next future occurrence
+        let current = nextTrigger;
+        let triggerCount = scheduled.triggerCount || 0;
+
+        while (current <= now) {
+            if (scheduled.interval === 'msc') {
+                const originalDay = scheduled.monthlyDay || getWarsawComponents(current).day;
+                current = addOneMonthWarsaw(current, originalDay);
+            } else if (scheduled.interval === 'ee') {
+                const cyclePosition = triggerCount % 9;
+                const intervalMs = cyclePosition === 8
+                    ? 4 * 24 * 60 * 60 * 1000
+                    : 3 * 24 * 60 * 60 * 1000;
+                current = new Date(current.getTime() + intervalMs);
+            } else {
+                current = new Date(current.getTime() + scheduled.intervalMs);
+            }
+            triggerCount++;
+        }
+
+        return await this.updateScheduled(id, {
+            status: 'active',
+            nextTrigger: current.toISOString(),
+            triggerCount
+        });
     }
 
     async updateNextTrigger(id) {
