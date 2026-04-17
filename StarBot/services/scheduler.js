@@ -49,7 +49,6 @@ class Scheduler {
         let anyTriggered = false;
 
         for (const sch of scheduled) {
-            // Skip manual-only reminders - they are never auto-triggered
             if (sch.isManual) continue;
 
             const nextTriggerTime = new Date(sch.nextTrigger);
@@ -60,14 +59,12 @@ class Scheduler {
                 const isOneTime = !sch.interval || sch.interval === null || sch.isOneTime;
 
                 if (isOneTime) {
-                    // One-time: delete both scheduled and template, refresh panel
                     await this.notificationManager.deleteScheduled(sch.id);
                     await this.notificationManager.deleteTemplate(sch.templateId);
                     await this.boardManager.ensureControlPanel();
                     const tplName = sch.templateId;
                     this.logger.info(`Triggered one-time reminder: ${sch.id} "${tplName}" - deleted scheduled and template`);
                 } else {
-                    // Recurring: update next trigger, refresh panel
                     await this.notificationManager.updateNextTrigger(sch.id);
                     await this.boardManager.updateControlPanel();
                     const tplName = this.notificationManager.getTemplate(sch.templateId)?.name || sch.templateId;
@@ -80,6 +77,20 @@ class Scheduler {
 
         if (anyTriggered) {
             await this.boardManager.updateControlPanel();
+        }
+
+        // Delete paused one-time reminders whose trigger time has passed
+        const allScheduled = this.notificationManager.getAllScheduled();
+        for (const sch of allScheduled) {
+            if (sch.status !== 'paused' || sch.isManual) continue;
+            if (sch.interval && !sch.isOneTime) continue;
+            const nextTriggerTime = new Date(sch.nextTrigger);
+            if (now >= nextTriggerTime) {
+                await this.notificationManager.deleteScheduled(sch.id);
+                await this.notificationManager.deleteTemplate(sch.templateId);
+                await this.boardManager.updateControlPanel();
+                this.logger.info(`Paused one-time reminder ${sch.id} expired - deleted`);
+            }
         }
     }
 
